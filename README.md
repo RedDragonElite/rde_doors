@@ -1,91 +1,92 @@
-# rde_doors
+serpentsbyte
+△ ᛋᛅᚱᛒᛅᚾᛏᛋ ᛒᛁᛏᛅ ▽
+· 2025-12-23
 
-Door System Script for ESX Legacy
-This script is designed to manage doors within an ESX Legacy framework, providing functionalities for creating, 
-deleting, and interacting with doors. It includes features for admin management, player interactions, and debugging.
+PREVIEW: https://www.instagram.com/p/DS6fpP1DuQ9/
 
-Features
-Door Management: Create, delete, and manage doors.
-Access Control: Control who can interact with doors based on ownership and admin rights.
-Interaction: Players can interact with doors to view information, lock/unlock, buy, and manage access.
-Debugging: Toggle debug mode to print detailed logs for troubleshooting.
+🎮 What It Does (No Hype, Just Facts)
 
-Installation:
+🔹 🔒 Real-Time Lock Sync – Doors lock/unlock instantly for all players. (Statebags + ox_core)
+🔹 📋 Admin/Owner Menus – Full CRUD control with ox_lib UI and paging for 100+ doors.
+🔹 🔑 Item-Based Access – Open doors with keys, keycards, or custom items (ox_inventory).
+🔹 📁 Door Groups – Link doors (e.g., houses, businesses) and control them as one.
+🔹 🔄 Real-Time Sync – All changes (locks, owners, prices) update instantly for everyone.
+🔹 🔔 Knock/Ring System – NPCs/players react when you knock/ring (with sound effects).
+🔹 📍 Teleport Function – Admins/owners teleport instantly to any door.
+🔹 🏷 3D Text Labels – Floating owner, lock status, price, and group info above doors.
+🔹 🛡 Triple Admin Check – ACE + ox_core groups + Steam IDs for security.
+🔹 🔄 Auto-Lock/Unlock – Doors auto-lock after X seconds or unlock for specific groups.
+🔹 ⚡️ Optimized Performance – Batched updates, proximity loading, and entity pooling for 200+ players
+.
+💻 How It Works (Tech Deep Dive)
+📂 Clean File Structure
+rde_doors/
+├── fxmanifest.lua -- (ox_core, ox_lib, oxmysql)
+├── config.lua -- (Settings, language, door types)
+├── client.lua -- (UI, 3D text, ox_target menus)
+└── server.lua -- (Logic, DB, statebags, permissions)
 
-Place the script in your ESX server's resource directory.
-Ensure you have the necessary dependencies like ox_target and lib.
-Configure:
+🗃 Smart Database
+-- Doors (Auto-created)
+CREATE TABLE rde_owned_doors (
+id VARCHAR(50) PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+coords LONGTEXT NOT NULL, -- Serialized vector3
+model VARCHAR(100) NOT NULL,
+locked TINYINT(1) DEFAULT 1,
+items LONGTEXT DEFAULT '[]' -- Required items (ox_inventory)
+);
 
-Update the Config.lua file with your server's specific settings.
-Ensure the Config.AdminGroups and other configurations are set according to your server's requirements.
+-- Door Groups (Auto-created)
+CREATE TABLE rde_door_groups (
+id VARCHAR(50) PRIMARY KEY,
+name VARCHAR(100) NOT NULL,
+doors LONGTEXT DEFAULT '[]' -- Array of door IDs
+);
 
-Start the Resource:
-
-Add the resource to your server's configuration file.
-Start the resource using your server's resource management commands.
-Configuration
-Config.lua
-
-Config = {}
-
-Config.DEBUG = false -- Set to true to enable debug mode
-Config.AdminGroups = {
-    ['admin'] = true,
-    ['superadmin'] = true
+🔄 Instant Statebag Sync
+-- Server → Client (Real-Time)
+Entity(doorEntity).state.rde_door_data = {
+locked = door.locked,
+owner = door.owner_charid,
+group = door.group_id
 }
-Config.Strings = {
-    ['set_door'] = 'Set Door Information',
-    ['delete_door'] = 'Delete Door',
-    ['manage_access'] = 'Manage Access',
-    ['sell_door'] = 'Sell Door',
-    ['buy_door'] = 'Buy Door'
+
+🛡 Secure Admin Checks
+-- 3-Layer Security
+if IsPlayerAceAllowed(source, 'rde.doors.admin') then return true end
+if Ox.GetPlayer(source).getGroup('admin') then return true end
+if steamId == Config.AdminSystem.steamIds[player] then return true end
+
+🎮 Smooth ox_target Menus
+exports.ox_target:addLocalEntity(doorEntity, {
+{
+name = 'door_admin_' .. doorId,
+label = 'Admin Menu',
+icon = 'fa-cog',
+onSelect = function() OpenAdminMenu(doorId) end,
+canInteract = function() return IsPlayerAdmin() end
 }
+})
 
-Usage
+⚡️ Performance First
+Proximity Loading (Doors load only within 30m).
+Batched Statebag Updates (Reduces network traffic).
+Entity Pooling (Reuses door entities).
+Debounced Events (Limits updates to 1 per second).
+MySQL Caching (Reduces database queries).
 
-Commands:
+📌 Current Status (2025)
+✅ Core System (locks, statebags, permissions) – Stable
+✅ Admin/Owner Menus (ox_lib + paging) – Tested
+✅ Item & Group System – In Testing
+✅ Real-Time Sync – Optimized
+🔜 Knock/Ring NPC Reactions – Final Polish
+🔜 Teleport & Physics – Refining
 
-/createdoor: Admin command to create a door.
-/debugdoors: Toggle debug mode.
-/testdoors: Test command to scan and print nearby objects.
+(No ETA. We release when it’s perfect.)
 
-Events:
+🎥"We’re building a FiveM door system so advanced, it’ll make you question reality. 🚪
+✨ No release, no hype just pure dev passion. 👀"
 
-esx:playerLoaded: Loads player data and initializes doors.
-esx:setPlayerData: Updates player data and reloads doors if necessary.
-door_system:updateDoorTarget: Updates door target options.
-door_system:updateDoors: Updates the list of doors.
-door_system:setDoorState: Sets the door state (locked/unlocked).
-
-Functions:
-
-debugPrint(...): Prints debug messages if debug mode is active.
-isDoorModel(modelName): Checks if a model name contains door/gate keywords.
-getDoorInfo(entity): Gets door position and rotation from an entity.
-ShowNotification(msg): Shows a notification to the player.
-clearTargetZones(): Removes existing target zones.
-hasAccess(door): Checks if the player has access to a door.
-SetDoorState(doorId, state): Locks or unlocks the door object.
-DrawText3D(x, y, z, text): Draws 3D text in the game world.
-setupDoorTarget(): Sets up door target interactions.
-CreateDoorTarget(doorId, coords, modelName, locked): Creates a target zone for a door.
-LoadDoors(): Loads doors from the server.
-
-Debugging:
-
-Debug Mode: Toggle debug mode using the /debugdoors command to print detailed logs for troubleshooting.
-Debug Prints: Detailed print statements are included throughout the script to help identify issues.
-
-Release Notes:
-
-Version v0.5.0 ALPHA
-Initial release with door management features.
-Admin commands for creating and deleting doors.
-Player interactions for viewing door information, locking/unlocking, buying, and managing access.
-Debug mode for troubleshooting.
-
-Contributing:
-Contributions are welcome! Please fork the repository and submit a pull request with your changes.
-
-License
-This project is licensed under the MIT License. See the LICENSE file for details.
+#FiveM #GTARP #GameDev #ox_core #Statebags #RealTimeSync #NoPixel #GameTech #WIP #Coding #FiveMScripts #fy #fyp #foryou
