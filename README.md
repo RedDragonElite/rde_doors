@@ -31,13 +31,19 @@ PREVIEW: https://www.instagram.com/p/DS6fpP1DuQ9/
 💻 How It Works (Tech Deep Dive)
 📂 Clean File Structure
 rde_doors/
+
 ├── fxmanifest.lua -- (ox_core, ox_lib, oxmysql)
+
 ├── config.lua -- (Settings, language, door types)
+
 ├── client.lua -- (UI, 3D text, ox_target menus)
+
 └── server.lua -- (Logic, DB, statebags, permissions)
+
 
 🗃 Smart Database
 -- Doors (Auto-created)
+
 CREATE TABLE rde_owned_doors (
 id VARCHAR(50) PRIMARY KEY,
 name VARCHAR(100) NOT NULL,
@@ -48,6 +54,7 @@ items LONGTEXT DEFAULT '[]' -- Required items (ox_inventory)
 );
 
 -- Door Groups (Auto-created)
+
 CREATE TABLE rde_door_groups (
 id VARCHAR(50) PRIMARY KEY,
 name VARCHAR(100) NOT NULL,
@@ -55,6 +62,7 @@ doors LONGTEXT DEFAULT '[]' -- Array of door IDs
 );
 
 🔄 Instant Statebag Sync
+
 -- Server → Client (Real-Time)
 Entity(doorEntity).state.rde_door_data = {
 locked = door.locked,
@@ -63,12 +71,14 @@ group = door.group_id
 }
 
 🛡 Secure Admin Checks
+
 -- 3-Layer Security
 if IsPlayerAceAllowed(source, 'rde.doors.admin') then return true end
 if Ox.GetPlayer(source).getGroup('admin') then return true end
 if steamId == Config.AdminSystem.steamIds[player] then return true end
 
 🎮 Smooth ox_target Menus
+
 exports.ox_target:addLocalEntity(doorEntity, {
 {
 name = 'door_admin_' .. doorId,
@@ -80,6 +90,7 @@ canInteract = function() return IsPlayerAdmin() end
 })
 
 ⚡️ Performance First
+
 Proximity Loading (Doors load only within 30m).
 Batched Statebag Updates (Reduces network traffic).
 Entity Pooling (Reuses door entities).
@@ -87,16 +98,25 @@ Debounced Events (Limits updates to 1 per second).
 MySQL Caching (Reduces database queries).
 
 📌 Current Status (2025)
+
 ✅ Core System (locks, statebags, permissions) – Stable
+
 ✅ Admin/Owner Menus (ox_lib + paging) – Tested
+
 ✅ Item & Group System – In Testing
+
 ✅ Real-Time Sync – Optimized
+
 🔜 Knock/Ring NPC Reactions – Final Polish
+
 🔜 Teleport & Physics – Refining
+
 
 (No ETA. We release when it’s perfect.)
 
+
 🎥"We’re building a FiveM door system so advanced, it’ll make you question reality. 🚪
+
 ✨ No release, no hype just pure dev passion. 👀"
 
 #FiveM #GTARP #GameDev #ox_core #Statebags #RealTimeSync #NoPixel #GameTech #WIP #Coding #FiveMScripts #fy #fyp #foryou
