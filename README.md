@@ -7,15 +7,25 @@ PREVIEW: https://www.instagram.com/p/DS6fpP1DuQ9/
 🎮 What It Does (No Hype, Just Facts)
 
 🔹 🔒 Real-Time Lock Sync – Doors lock/unlock instantly for all players. (Statebags + ox_core)
+
 🔹 📋 Admin/Owner Menus – Full CRUD control with ox_lib UI and paging for 100+ doors.
+
 🔹 🔑 Item-Based Access – Open doors with keys, keycards, or custom items (ox_inventory).
+
 🔹 📁 Door Groups – Link doors (e.g., houses, businesses) and control them as one.
+
 🔹 🔄 Real-Time Sync – All changes (locks, owners, prices) update instantly for everyone.
+
 🔹 🔔 Knock/Ring System – NPCs/players react when you knock/ring (with sound effects).
+
 🔹 📍 Teleport Function – Admins/owners teleport instantly to any door.
+
 🔹 🏷 3D Text Labels – Floating owner, lock status, price, and group info above doors.
+
 🔹 🛡 Triple Admin Check – ACE + ox_core groups + Steam IDs for security.
+
 🔹 🔄 Auto-Lock/Unlock – Doors auto-lock after X seconds or unlock for specific groups.
+
 🔹 ⚡️ Optimized Performance – Batched updates, proximity loading, and entity pooling for 200+ players
 .
 💻 How It Works (Tech Deep Dive)
