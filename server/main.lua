@@ -1,7 +1,7 @@
 -- ============================================
 -- 🚪 RDE DOORS - SERVER (Next-Level)
 -- ============================================
--- Version: 6.0.0 (Full ox_doorlock Integration + Next-Level Features)
+-- Version: 1.0.0 (Full ox_doorlock Integration + Next-Level Features)
 -- Author: RDE | SerpentsByte
 -- Features: Door Groups, Item Support, Admin System, Realism, Performance, Localization, Statebag-Sync, ox_inventory, Triple Admin Verification
 -- ============================================
@@ -1355,4 +1355,5 @@ AddEventHandler('playerDropped', function(reason)
 end)
 
 debugPrint(3, '✅ Server script loaded successfully')
+
 print('^2[RDE | Doors | Server] 📜 Server-side script ready^7')
