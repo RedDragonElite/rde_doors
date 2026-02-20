@@ -4,7 +4,7 @@ lua54 'yes'
 
 name 'rde_doors'
 author 'RDE Development'
-version '2.0.0'
+version '1.0.0'
 description 'Advanced Door Management System with State Bags and Proximity Loading for ox_core v3'
 
 shared_scripts {
@@ -31,4 +31,5 @@ dependencies {
 }
 
 -- State Bags werden automatisch synchronisiert
+
 -- Keine zusätzliche Konfiguration nötig
