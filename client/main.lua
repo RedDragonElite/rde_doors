@@ -1,7 +1,7 @@
 -- ============================================
 -- 🚪 RDE DOORS - CLIENT (ox_core 2025 Next-Level + Full CRUD + Admin/Owner Menus)
 -- ============================================
--- Version: 6.2.0 (Full ox_doorlock Integration + CRUD + Admin/Owner Menus + Real-Time Sync)
+-- Version: 1.0.0 (Full ox_doorlock Integration + CRUD + Admin/Owner Menus + Real-Time Sync)
 -- Author: RDE | SerpentsByte
 -- ============================================
 
@@ -1342,3 +1342,4 @@ if DEBUG_MODE then
 end
 
 debugPrint('Client initialized successfully')
+
