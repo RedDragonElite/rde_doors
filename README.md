@@ -1,5 +1,5 @@
 # 🚪 RDE Doors — Next-Level FiveM Door System
-![dl_1771623550328](https://github.com/user-attachments/assets/a9a01325-1bd4-494d-8b73-311c96e2294f)
+<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/88cd9964-eee7-4593-95e9-505b1b15b216" />
 
 <div align="center">
 
