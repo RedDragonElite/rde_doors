@@ -1,50 +1,58 @@
 # 🚪 RDE Doors — Next-Level FiveM Door System
-<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/88cd9964-eee7-4593-95e9-505b1b15b216" />
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0--alpha-red?style=for-the-badge&logo=github)
-![Status](https://img.shields.io/badge/status-EARLY%20ALPHA-orange?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-3.0.0-brightgreen?style=for-the-badge&logo=github)
+![Status](https://img.shields.io/badge/status-STABLE-green?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-RDE%20Black%20Flag%20v6.66-black?style=for-the-badge)
 ![FiveM](https://img.shields.io/badge/FiveM-Compatible-orange?style=for-the-badge)
 ![ox_core](https://img.shields.io/badge/ox__core-Required-blue?style=for-the-badge)
 ![Free](https://img.shields.io/badge/price-FREE%20FOREVER-brightgreen?style=for-the-badge)
 
-**Production-grade, fully database-backed door system for FiveM.**
+**Production-grade, fully database-backed door system for FiveM.**  
 Built on ox_core · ox_inventory · ox_lib · Nostr logging · Triple admin verification
 
-*Built by [Red Dragon Elite](https://rd-elite.com) | SerpentsByte · v1.0.0-alpha*
+*Built by [Red Dragon Elite](https://rd-elite.com) | SerpentsByte · v3.0.0*
 
 </div>
-
-> [!WARNING]
-> **🚧 EARLY ALPHA — ACTIVE DEVELOPMENT**
->
-> This resource is fully functional for single doors and all core features listed below.
-> However, it is still under active development and **not yet feature-complete**.
->
-> **Known limitations in v1.0.0-alpha:**
-> - ❌ **Double doors** — not working correctly yet (in progress)
-> - ⚠️ API surface may change between alpha releases
-> - ⚠️ Expect breaking changes before the stable 1.0.0 release
->
-> Use in production at your own discretion. Bug reports and feedback welcome — that's exactly what alpha is for.
 
 ---
 
 ## 📖 Table of Contents
 
+- [What's New in v3.0.0](#-whats-new-in-v300)
 - [Why RDE Doors?](#-why-rde-doors)
 - [Features](#-features)
 - [Dependencies](#-dependencies)
 - [Installation](#-installation)
+- [Upgrading from v2.x](#-upgrading-from-v2x-existing-servers)
+- [Double Door Setup](#-double-door-setup)
 - [Configuration](#%EF%B8%8F-configuration)
-- [Exports & Developer API](#-exports--developer-api)
 - [Admin Commands](#-admin-commands)
+- [Exports & Developer API](#-exports--developer-api)
 - [Nostr Logging](#-nostr-logging-integration)
 - [Database Schema](#-database-schema)
 - [Troubleshooting](#-troubleshooting)
 - [License](#-license)
+
+---
+
+## 🆕 What's New in v3.0.0
+
+### ✅ Double Door Support
+The feature that took 6-9 months is finally here. Two door entities that lock and unlock together as a single unit — fully persistent, fully synced.
+
+- **Two-step entity selection** in-world with visual outline feedback
+- **Midpoint 3D text** — the door name/status floats exactly between the two doors
+- **Both entities registered** in GTA's native door system simultaneously
+- **ox_target on both entities** — interact with either door leaf to get the menu
+- **Backward compatible** — all existing single doors work exactly as before
+
+### ✅ Auto Database Migration
+No more manual `ALTER TABLE`. On first start after upgrading, the server automatically detects missing columns and adds them. Your existing doors are untouched.
+
+### ✅ Cleaner Door Type Selection UI
+The create door dialog now uses a proper dropdown instead of a confusing single-button alert.
 
 ---
 
@@ -55,10 +63,12 @@ Most door scripts are static config files. You restart the server, you lose runt
 | Feature | Config-based scripts | RDE Doors |
 |---|---|---|
 | Runtime door creation | ❌ | ✅ |
+| **Double door support** | ❌ | ✅ **v3.0.0** |
 | Persistent ownership | ❌ | ✅ Database-backed |
 | Per-player access lists | ❌ | ✅ |
 | Item-based access | ❌ | ✅ ox_inventory |
 | Door groups | ❌ | ✅ |
+| Auto DB migration | ❌ | ✅ **v3.0.0** |
 | Decentralized logging | ❌ | ✅ Nostr |
 | Admin triple verification | ❌ | ✅ ACE + ox_core + groups |
 | Autolock timers | ❌ | ✅ |
@@ -70,529 +80,293 @@ Most door scripts are static config files. You restart the server, you lose runt
 ## 🎯 Features
 
 ### 🔒 Core Door System
-- **Full CRUD** — Create, update, delete doors at runtime via events or admin commands
-- **Database persistence** — All doors and groups survive server restarts (oxmysql)
+- **Full CRUD** — Create, update, delete doors at runtime
+- **Single & Double doors** — Both types fully supported
+- **Database persistence** — All doors survive server restarts (oxmysql)
 - **Statebag sync** — Real-time door state broadcast to all players
-- **Coordinate deduplication** — Prevents overlapping doors at the same position
-- **Door validation** — Full server-side data validation on every operation
+- **Coordinate deduplication** — Prevents overlapping doors
+- **Door validation** — Full server-side validation on every operation
+
+### 🚪🚪 Double Doors
+- Select two entities in-world (step-by-step with visual outline)
+- Both entities register in GTA's native door system
+- Lock/unlock both leaves simultaneously
+- 3D text anchored at the exact midpoint between the two doors
+- ox_target on both leaves — either one opens the interaction menu
+- Stored as JSON in `double_door_data` column (backward compatible)
 
 ### 👤 Ownership & Access Control
 - **Player ownership** — Doors can be owned per `charId`
-- **Access lists** — Grant/revoke access to specific characters
-- **Group-based auth** — Lock doors to ox_core groups (e.g. `police`, `mechanic`)
-- **Item-based access** — Require an item from ox_inventory to open a door
-- **Triple admin verification** — ACE permissions + ox_core groups + manual fallback
-- **Buyable doors** — Set a price; players can purchase ownership in-game
+- **Access lists** — Grant/revoke individual player access
+- **Auth groups** — ox_core group-based access (e.g. `"police"`)
+- **Item-based access** — Require an item from ox_inventory
 
-### 🔔 Realism Features
-- **Door bell** — Ring a doorbell; the owner gets notified via ox_lib
-- **Knock** — Knock on a door; same notification system
-- **Autolock** — Doors re-lock automatically after a configurable timeout
-- **Max distance** — Per-door configurable interaction range
+### 💰 Economy
+- **Buyable doors** — Set a price, sell doors to players (cash item)
+- **Owner menu** — Owners can set price, rename, manage access
 
-### 📊 Door Groups
-- Create named groups containing multiple doors
-- Lock/unlock an entire group at once
-- Full group CRUD with persistent storage
+### 🔔 Interactions
+- **Bell system** — Ring the bell, owner gets notified
+- **Knock system** — Knock animation + owner notification
+- **Door groups** — Group multiple doors, manage them together
 
-### 🛡️ Admin Tools
-- `/doorslist` — Print all doors to server console with validity status
-- `/resyncdoors` — Force-resync all doors to all connected players
-- `/cleandoors` — Scan and remove corrupted/invalid door entries from the DB
-- `/doorinfo` — Get detailed info on the nearest door (within 10m)
-
-### 📡 Nostr Logging
-- Every significant action is broadcast to the Nostr network via `rde_nostr_log`
-- Decentralized, permanent, uncensorable server logs
-- See [Nostr Logging](#-nostr-logging-integration) section
+### 👑 Admin System
+- **Triple verification**: ACE permissions + ox_core groups + Steam IDs
+- **In-game door manager** (`/doormanager`) — full CRUD for all doors
+- **Admin teleport** to any door
+- **`/doorslist`** — list all doors with type labels `[SINGLE]` / `[DOUBLE]`
+- **`/doorinfo`** — detailed info on nearest door
+- **`/resyncdoors`** — hot-reload doors from database
+- **`/cleandoors`** — remove invalid entries
 
 ---
 
 ## 📦 Dependencies
 
-| Resource | Required | Notes |
-|---|---|---|
-| [oxmysql](https://github.com/communityox/oxmysql) | ✅ Required | Database layer |
-| [ox_core](https://github.com/communityox/ox_core) | ✅ Required | Player/character framework |
-| [ox_lib](https://github.com/communityox/ox_lib) | ✅ Required | Callbacks, commands, notifications |
-| [ox_inventory](https://github.com/communityox/ox_inventory) | ✅ Required | Item-based door access |
-| [rde_nostr_log](https://github.com/RedDragonElite/rde_nostr_log) | ⚠️ Optional | Decentralized logging — highly recommended |
+```
+ox_core
+ox_lib
+ox_target
+ox_inventory
+oxmysql
+```
+
+Optional: `rde_nostr_log` (for decentralized event logging)
 
 ---
 
 ## 🚀 Installation
 
-### 1. Clone the repository
+### Fresh Install
 
-```bash
-cd resources
-git clone https://github.com/RedDragonElite/rde_doors.git
+1. Drop `rde_doors` into your resources folder
+2. Add `ensure rde_doors` to `server.cfg` **after** all dependencies
+3. Start the server — tables are created automatically, no SQL needed
+
+### Starting Order (server.cfg)
 ```
-
-### 2. Add to `server.cfg`
-
-```cfg
 ensure oxmysql
 ensure ox_core
 ensure ox_lib
+ensure ox_target
 ensure ox_inventory
-ensure rde_nostr_log   # optional but recommended
 ensure rde_doors
 ```
 
-> **Order matters.** `rde_doors` must start **after** all its dependencies.
+---
 
-### 3. Start / Restart
+## ⬆️ Upgrading from v2.x (existing servers)
 
+> **Zero data loss. Your existing doors are fully compatible.**
+
+1. Replace the resource files with v3.0.0
+2. Start the server
+3. The server auto-detects the missing `double_door_data` column and adds it via `ALTER TABLE`
+4. All existing single doors load and work exactly as before
+5. Done — no manual SQL required
+
+You'll see this in the console on first start after upgrade:
 ```
-start rde_doors
+[RDE | Doors | Server] [INFO] Migration applied: added column double_door_data
+[RDE | Doors | Server] [INFO] Database ready (schema up to date)
 ```
 
-The database tables are created automatically on first start. No manual SQL import needed.
+---
 
-### 4. Verify
+## 🚪🚪 Double Door Setup
 
-Check your server console — you should see:
+### Creating a Double Door In-Game
 
+1. Run `/createdoor` (admin required)
+2. The dialog asks: **Single Door** or **Double Door** — select `🚪🚪 Double Door`
+3. A selection sphere follows your crosshair
+4. **Left-click** on the first door entity (it gets outlined in white)
+5. A notification confirms: *"Door 1/2 selected. Select door 2 now."*
+6. **Left-click** on the second door entity
+7. Enter the door name and price
+8. Done — both doors are registered, locked together, and the 3D text appears at the midpoint
+
+### Tips
+- Stand close to the doors when selecting (within ~5m)
+- The two entities should be the same model (matching double door pair)
+- Use `/doorinfo` after creation to verify both sub-door models are stored correctly
+- Right-click cancels the selection at any point
+
+### How It Works Internally
 ```
-[RDE Doors] ✅ Ready with X doors (X valid) and X groups
-[RDE Doors] 📜 Server-side script ready
+double door record
+├── coords: { midpoint between door_a and door_b }  ← used for proximity/3D text
+├── door_a: { model, coords, heading }              ← stored in double_door_data JSON
+└── door_b: { model, coords, heading }              ← stored in double_door_data JSON
 ```
+
+Both sub-doors are registered independently in GTA's `DoorSystem` with unique hashes (`rde_door_{id}_a` / `rde_door_{id}_b`). When you toggle the lock, both states change simultaneously.
 
 ---
 
 ## ⚙️ Configuration
 
-Edit `shared/config.lua`:
+All settings live in `shared/config.lua`. Key options:
 
 ```lua
-Config = {
-    Debug = true,                       -- Enable verbose logging
-    DefaultLanguage = 'en',             -- 'en' or 'de'
+Config.DefaultLanguage = 'en'  -- or 'de'
 
-    Defaults = {
-        type        = 'single',         -- Default door type
-        locked      = true,             -- Doors start locked
-        autolock    = 0,                -- 0 = disabled, seconds otherwise
-        heading     = 0.0,              -- Default heading
-        maxDistance = 2.5,              -- Default interaction range (meters)
-        price       = 0,                -- 0 = not for sale
-    },
+Config.UI = {
+    use3DText            = true,
+    textDistance         = 5.0,       -- meters to show 3D text
+    interactionDistance  = 2.5,       -- ox_target range
+    proximityLoadDistance = 30.0,     -- load door targets within this range
+}
 
-    AdminSystem = {
-        acePermission = 'rde.doors.admin',  -- ACE node
-        oxGroups = {
-            admin      = true,
-            superadmin = true,
-            management = true,
-        },
-    },
-
-    Performance = {
-        useStateBags = true,            -- Statebag-based sync
-    },
+Config.AdminSystem = {
+    acePermission = 'rde.doors.admin',
+    oxGroups = { ['admin'] = 0, ['superadmin'] = 0, ['management'] = 0 },
 }
 ```
 
-### ACE Permissions (server.cfg)
-
-```cfg
-add_ace group.admin rde.doors.admin allow
-```
-
 ---
 
-## 🔧 Exports & Developer API
-
-### Server-side Events
-
-#### Create a Door
-```lua
-TriggerEvent('rde_doors:createDoor', {
-    name        = 'Police HQ Front Door',
-    coords      = { x = 462.12, y = -993.47, z = 27.79 },
-    model       = 'prop_door_01',
-    type        = 'single',         -- 'single' or 'double'
-    locked      = true,
-    auth        = { 'police' },     -- ox_core groups with access
-    items       = { 'keycard_pd' }, -- ox_inventory items that grant access
-    autolock    = 30,               -- seconds, 0 to disable
-    heading     = 0.0,
-    maxDistance = 2.5,
-    price       = 0,
-})
-```
-
-#### Toggle Lock
-```lua
-TriggerServerEvent('rde_doors:toggleLock', doorId)
-```
-
-#### Update a Door
-```lua
-TriggerServerEvent('rde_doors:updateDoor', doorId, {
-    name  = 'New Name',
-    price = 5000,
-    auth  = { 'police', 'ambulance' },
-})
-```
-
-#### Delete a Door
-```lua
-TriggerServerEvent('rde_doors:deleteDoor', doorId)
-```
-
-#### Manage Access
-```lua
--- Grant access to a character
-TriggerServerEvent('rde_doors:manageAccess', doorId, targetCharId, true)
-
--- Revoke access
-TriggerServerEvent('rde_doors:manageAccess', doorId, targetCharId, false)
-```
-
-#### Door Groups
-```lua
-TriggerServerEvent('rde_doors:createGroup', 'Police HQ')
-TriggerServerEvent('rde_doors:addToGroup', doorId, groupId)
-TriggerServerEvent('rde_doors:removeFromGroup', doorId, groupId)
-TriggerServerEvent('rde_doors:renameGroup', groupId, 'New Group Name')
-TriggerServerEvent('rde_doors:deleteGroup', groupId)
-```
-
-### Callbacks (ox_lib)
-
-```lua
--- Check if local player is admin
-lib.callback('rde_doors:checkAdmin', false, function(isAdmin)
-    print('Is admin:', isAdmin)
-end)
-
--- Check if local player has access to a door
-lib.callback('rde_doors:checkAccess', false, function(hasAccess)
-    print('Has access:', hasAccess)
-end, doorId)
-
--- Buy a door (deducts price from ox_inventory money)
-lib.callback('rde_doors:buyDoor', false, function(success, message)
-    print(success, message)
-end, doorId)
-```
-
-### Client Events (listening)
-
-```lua
--- Fired when all doors are synced to this client
-AddEventHandler('rde_doors:syncDoors', function(doorArray, doorGroups)
-    -- doorArray: table of all door objects
-    -- doorGroups: table of all group objects
-end)
-
--- Fired when a single door state changes
-AddEventHandler('rde_doors:doorUpdate', function(doorId, doorData)
-end)
-
--- Fired when a door is deleted
-AddEventHandler('rde_doors:doorDeleted', function(doorId)
-end)
-
--- Fired when a door group changes
-AddEventHandler('rde_doors:doorGroupUpdate', function(groupId, groupData)
-end)
-
--- Fired when a group is deleted
-AddEventHandler('rde_doors:doorGroupDeleted', function(groupId)
-end)
-
--- Feedback after any action (success/fail notification)
-AddEventHandler('rde_doors:actionFeedback', function(success, message, doorId, action)
-end)
-```
-
----
-
-## 📋 Admin Commands
-
-All commands require the `rde.doors.admin` ACE permission or an admin ox_core group.
+## 📊 Admin Commands
 
 | Command | Description |
 |---|---|
-| `/doorslist` | Lists all doors in the server console with validity info |
-| `/resyncdoors` | Reloads all doors from DB and resyncs to every player |
-| `/cleandoors` | Removes invalid/corrupted door records from the database |
-| `/doorinfo` | Prints detailed info about the closest door (≤ 10m) to console |
+| `/createdoor` | Select a door entity in-world and register it (single or double) |
+| `/doormanager` | Open the full door management UI |
+| `/doorslist` | Print all doors to server console with `[SINGLE]`/`[DOUBLE]` labels |
+| `/doorinfo` | Detailed info about the nearest door (within 10m) |
+| `/resyncdoors` | Reload all doors from database and resync all players |
+| `/cleandoors` | Remove doors with invalid coordinates from the database |
+| `/doordebug` (client) | Debug info in F8 console (Debug mode only) |
+
+---
+
+## 🔌 Exports & Developer API
+
+### Server Events
+
+```lua
+-- Toggle a door
+TriggerServerEvent('rde_doors:toggleLock', doorId)
+
+-- Create a single door
+TriggerServerEvent('rde_doors:createDoor', {
+    name    = 'My Door',
+    model   = 'v_ilev_ph_gendoor004',
+    coords  = { x = 0.0, y = 0.0, z = 0.0 },
+    heading = 0.0,
+    locked  = true,
+    price   = 0,
+    auth    = { 'police' },   -- optional group access
+})
+
+-- Create a double door
+TriggerServerEvent('rde_doors:createDoor', {
+    name   = 'My Double Door',
+    type   = 'double',
+    coords = { x = 0.0, y = 0.0, z = 0.0 },  -- midpoint
+    locked = true,
+    door_a = {
+        model   = 'v_ilev_bk_door',
+        coords  = { x = -0.3, y = 0.0, z = 0.0 },
+        heading = 0.0,
+    },
+    door_b = {
+        model   = 'v_ilev_bk_door',
+        coords  = { x =  0.3, y = 0.0, z = 0.0 },
+        heading = 180.0,
+    },
+})
+
+-- Update door properties
+TriggerServerEvent('rde_doors:updateDoor', doorId, { name='New Name', price=5000 })
+
+-- Delete a door
+TriggerServerEvent('rde_doors:deleteDoor', doorId)
+
+-- Manage access
+TriggerServerEvent('rde_doors:manageAccess', doorId, targetServerId, true)  -- grant
+TriggerServerEvent('rde_doors:manageAccess', doorId, charId, false)         -- revoke
+```
+
+### Callbacks
+
+```lua
+-- Check if player is admin
+lib.callback('rde_doors:checkAdmin', false, function(isAdmin) end)
+
+-- Check if player has access to a door
+lib.callback('rde_doors:checkAccess', false, function(hasAccess) end, doorId)
+```
 
 ---
 
 ## 📡 Nostr Logging Integration
 
-RDE Doors integrates natively with [rde_nostr_log](https://github.com/RedDragonElite/rde_nostr_log) — the world's first decentralized FiveM logging system.
+RDE Doors supports optional decentralized event logging via [rde_nostr_log](https://github.com/RedDragonElite/rde_nostr_log).
 
-If `rde_nostr_log` is not running, logging is silently skipped — **no errors, no crashes**.
+When `rde_nostr_log` is started, the following events are logged automatically:
+- Door created / updated / deleted
+- Lock toggled
+- Door purchased
+- Access granted / revoked
+- Bell rung / knock
 
-### Events Logged
-
-| Event | Nostr Message |
-|---|---|
-| Player loaded | `👤 Player loaded: Name \| UserID: X \| CharID: X` |
-| Player dropped | `👋 Player dropped: Name \| Reason: X` |
-| Door locked/unlocked | `🔒 Door Locked/Unlocked \| Name \| By: Player` |
-| Door created | `✅ Door created: Name \| By: Player` |
-| Door updated | `🔄 Door updated: Name \| By: Player` |
-| Door deleted | `🗑️ Door deleted: ID \| By: Player` |
-| Price set | `💰 Price set: Name → $X \| By: Player` |
-| Door renamed | `✏️ Door renamed: ID → NewName \| By: Player` |
-| Access granted/revoked | `🔑 Access granted/revoked \| Name \| By: Player` |
-| Door purchased | `💳 Door purchased: Name \| By: Player (CharID: X)` |
-| Bell rung | `🔔 Bell rung at: Name \| By: Player` |
-| Knock | `👊 Knock at: Name \| By: Player` |
-| Group created | `✅ Group created: Name \| By: Player` |
-| Group renamed | `✏️ Group renamed \| By: Player` |
-| Group deleted | `🗑️ Group deleted \| By: Player` |
-| Door added to group | `➕ Door added to group \| By: Player` |
-| Door removed from group | `➖ Door removed from group \| By: Player` |
-
-### Quick Setup
-
-```bash
-cd resources
-git clone https://github.com/RedDragonElite/rde_nostr_log.git
-cd rde_nostr_log
-yarn install
-```
-
-```cfg
-# server.cfg — ensure before rde_doors
-ensure rde_nostr_log
-```
+If `rde_nostr_log` is not present, logging is silently skipped — no errors.
 
 ---
 
 ## 🗄️ Database Schema
 
-Tables are created automatically. For reference:
+Two tables are created automatically:
 
 ### `rde_owned_doors`
-
 | Column | Type | Description |
 |---|---|---|
-| `id` | VARCHAR(50) | Unique door ID (generated) |
+| `id` | VARCHAR(50) | Unique door ID |
 | `type` | VARCHAR(20) | `single` or `double` |
 | `name` | VARCHAR(100) | Display name |
-| `coords` | LONGTEXT | JSON `{x, y, z}` |
-| `model` | VARCHAR(100) | Prop model name |
-| `model_hash` | VARCHAR(50) | GetHashKey result |
+| `coords` | LONGTEXT | JSON `{x,y,z}` — midpoint for double doors |
+| `model` | VARCHAR(100) | Model name (empty for double doors) |
+| `double_door_data` | LONGTEXT | **v3.0.0** JSON with `door_a` and `door_b` sub-door data |
 | `locked` | TINYINT(1) | 1 = locked |
 | `auth` | LONGTEXT | JSON array of group names |
-| `autolock` | INT | Seconds until relock (0 = off) |
-| `items` | LONGTEXT | JSON array of item names |
-| `heading` | FLOAT | Door heading |
-| `maxDistance` | FLOAT | Interaction range |
-| `owner_charid` | VARCHAR(50) | Owning character ID |
-| `owner_name` | VARCHAR(100) | Owning character name |
-| `price` | INT | Purchase price (0 = not for sale) |
+| `items` | LONGTEXT | JSON array of required item names |
+| `owner_charid` | VARCHAR(50) | ox_core charId of owner |
 | `access_list` | LONGTEXT | JSON array of charIds with access |
-| `group_id` | VARCHAR(50) | Door group ID (nullable) |
-| `created_at` | TIMESTAMP | Creation time |
-| `updated_at` | TIMESTAMP | Last update |
+| `price` | INT | Sale price (0 = not for sale) |
+| `group_id` | VARCHAR(50) | Door group membership |
 
 ### `rde_door_groups`
-
 | Column | Type | Description |
 |---|---|---|
 | `id` | VARCHAR(50) | Unique group ID |
-| `name` | VARCHAR(100) | Group display name |
+| `name` | VARCHAR(100) | Group name |
 | `doors` | LONGTEXT | JSON array of door IDs |
-| `created_at` | TIMESTAMP | Creation time |
-| `updated_at` | TIMESTAMP | Last update |
 
 ---
 
-## 🐛 Troubleshooting
+## 🔧 Troubleshooting
 
-### `attempt to index a number value (local 'player')` on `ox:playerLoaded`
+### Double door entities not found after server restart
+The server computes the midpoint at load time and each client looks up the physical entities by model + coords when they come into proximity. Make sure the `double_door_data` column was created (check console for migration log on startup). Run `/doorinfo` near the door to verify both models are stored.
 
-This was a bug in older versions. The correct `ox:playerLoaded` server signature is:
+### "Door already exists at this position"
+The system checks within a 1m radius. If you're trying to register a door that was previously deleted from the database but the coordinates overlap, use `/cleandoors` first.
 
-```lua
--- CORRECT (v6.0.0+):
-AddEventHandler('ox:playerLoaded', function(playerId, userId, charId)
-    -- playerId = server source ID (number)
-    -- userId   = user ID (number)
-    -- charId   = character ID (number)
-end)
+### Doors not showing after hot-restart
+Run `/resyncdoors` or trigger `rde_doors:requestSync` from the client. The proximity loop also re-checks every second.
 
--- WRONG (caused the crash):
-AddEventHandler('ox:playerLoaded', function(source, player)
-    player.charId  -- ❌ player is actually userId (a number), not a table!
-end)
-```
-
-**Already fixed in this version.** If you see this error, make sure you're on the latest commit.
-
----
-
-### `No such export log in resource rde_nostr_log`
-
-The correct export name is `postLog`, not `log`:
-
-```lua
--- CORRECT:
-exports['rde_nostr_log']:postLog('Your message', {{'event', 'event_type'}})
-
--- WRONG:
-exports['rde_nostr_log']:log(...)
-```
-
-Already fixed in v6.0.0+.
-
----
-
-### Doors not syncing to players after restart
-
-Run `/resyncdoors` in the server console. If doors still don't appear, check that `oxmysql` is fully started before `rde_doors` — adjust your `server.cfg` order.
-
----
-
-### `MySQL not available` on startup
-
-Ensure `oxmysql` is started before `rde_doors` in `server.cfg`:
-
-```cfg
-ensure oxmysql       # must come first
-ensure rde_doors
-```
-
----
-
-### Door created but invisible in-game
-
-The model must exist client-side. Double-check the `model` string matches an actual prop name (`prop_*` or a streamed custom model). Use `/doorinfo` while standing near the expected position to confirm the door was saved.
-
----
-
-### Access always denied despite being admin
-
-Verify your ACE setup:
-
-```cfg
-add_ace group.admin rde.doors.admin allow
-add_principal identifier.steam:YOURSTEAMHEX group.admin
-```
-
-Or add your group to `Config.AdminSystem.oxGroups` in `config.lua`.
-
----
-
-## 🗺️ Roadmap & Known Issues
-
-This is an **alpha release**. The following is tracked and in active development:
-
-### ❌ Known Issues (v1.0.0-alpha)
-
-| Issue | Status |
-|---|---|
-| Double doors not syncing correctly | 🔧 In Progress |
-| Autolock timer edge cases on server restart | 🔍 Investigating |
-
-### 🔜 Planned for Stable Release
-
-- ✅ Full double door support with correct heading sync
-- ✅ Client-side door animation hooks
-- ✅ ox_doorlock compatibility layer
-- ✅ AETHER admin panel UI (NUI)
-- ✅ Door sound effects (knock, bell, lock click)
-- ✅ Expanded multi-language support
-
-> Have a bug or feature request? [Open an issue](https://github.com/RedDragonElite/rde_doors/issues) — alpha feedback directly shapes the stable release.
+### Auto-migration not running
+Ensure your database user has `ALTER TABLE` privileges. The migration check queries `information_schema.COLUMNS` — confirm the DB user has `SELECT` on `information_schema`.
 
 ---
 
 ## 📜 License
 
 ```
-###################################################################################
-#                                                                                 #
-#      .:: RED DRAGON ELITE (RDE)  -  BLACK FLAG SOURCE LICENSE v6.66 ::.         #
-#                                                                                 #
-#   PROJECT:    RDE_DOORS v1.0.0-ALPHA (NEXT-LEVEL FIVEM DOOR SYSTEM)             #
-#   ARCHITECT:  .:: RDE ⧌ Shin [△ ᛋᛅᚱᛒᛅᚾᛏᛋ ᛒᛁᛏᛅ ▽] ::. | https://rd-elite.com     #
-#   ORIGIN:     https://github.com/RedDragonElite                                 #
-#                                                                                 #
-#   WARNING: THIS CODE IS PROTECTED BY DIGITAL VOODOO AND PURE HATRED FOR LEAKERS #
-#                                                                                 #
-#   [ THE RULES OF THE GAME ]                                                     #
-#                                                                                 #
-#   1. // THE "FUCK GREED" PROTOCOL (FREE USE)                                    #
-#      You are free to use, edit, and abuse this code on your server.             #
-#      Learn from it. Break it. Fix it. That is the hacker way.                   #
-#      Cost: 0.00€. If you paid for this, you got scammed by a rat.               #
-#                                                                                 #
-#   2. // THE TEBEX KILL SWITCH (COMMERCIAL SUICIDE)                              #
-#      Listen closely, you parasites:                                             #
-#      If I find this script on Tebex, Patreon, or in a paid "Premium Pack":      #
-#      > I will DMCA your store into oblivion.                                    #
-#      > I will publicly shame your community.                                    #
-#      > I hope your server lag spikes to 9999ms every time you blink.            #
-#      SELLING FREE WORK IS THEFT. AND I AM THE JUDGE.                            #
-#                                                                                 #
-#   3. // THE CREDIT OATH                                                         #
-#      Keep this header. If you remove my name, you admit you have no skill.      #
-#      You can add "Edited by [YourName]", but never erase the original creator.  #
-#      Don't be a skid. Respect the architecture.                                 #
-#                                                                                 #
-#   4. // THE CURSE OF THE COPY-PASTE                                             #
-#      This code uses advanced logic and cryptographic patterns.                  #
-#      If you just copy-paste without reading, it WILL break.                     #
-#      Don't come crying to my DMs. RTFM or learn to code.                        #
-#                                                                                 #
-#   --------------------------------------------------------------------------    #
-#   "We build the future on the graves of paid resources."                        #
-#   "REJECT MODERN MEDIOCRITY. EMBRACE RDE SUPERIORITY."                          #
-#   --------------------------------------------------------------------------    #
-###################################################################################
+RDE Black Flag Source License v6.66
+Free to use on your server. Do not sell. Keep credits.
+See LICENSE file for full terms.
 ```
 
-**TL;DR:**
-- ✅ Free forever — use it, edit it, learn from it
-- ✅ Keep the header — credit where it's due
-- ❌ Don't sell it — commercial use = instant DMCA
-- ❌ Don't be a skid — copy-paste without reading won't work anyway
-
----
-
-## 🌐 Community & Support
-
-| | |
-|---|---|
-| 🐙 GitHub | [RedDragonElite](https://github.com/RedDragonElite) |
-| 🌍 Website | [rd-elite.com](https://rd-elite.com) |
-| 🔵 Nostr | [npub1wr4e24zn6zzjqx8kvnelfvktf0pu6l2gx4gvw06zead2eqyn23sq9tsd94](https://nostr.band/npub1wr4e24zn6zzjqx8kvnelfvktf0pu6l2gx4gvw06zead2eqyn23sq9tsd94) |
-| 🤖 RDE Nostr Log | [rde_nostr_log](https://github.com/RedDragonElite/rde_nostr_log) |
-
-**When asking for help, always include:**
-- Full error from server console (F8 or txAdmin)
-- Your `server.cfg` resource order
-- ox_core / ox_lib versions
-
-**Please DON'T:**
-- ❌ DM for basic setup questions — read the docs first
-- ❌ Open issues without error logs
-- ❌ Ask for paid support — this is free software
-
-**Please DO:**
-- ✅ Star the repo if it helped you
-- ✅ Open issues with proper reproduction steps
-- ✅ Share your setup — community feedback makes this better
-
----
-
-<div align="center">
-
-*"We build the future on the graves of paid resources."*
-
-**REJECT MODERN MEDIOCRITY. EMBRACE RDE SUPERIORITY.**
-
-🐉 Made with 🔥 by [Red Dragon Elite](https://rd-elite.com)
-
-</div>
+*Built with ☠️ by RDE | SerpentsByte*

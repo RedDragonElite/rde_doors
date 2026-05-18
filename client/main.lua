@@ -1,52 +1,46 @@
 -- ============================================
--- 🚪 RDE DOORS - CLIENT (ox_core 2025 Next-Level + Full CRUD + Admin/Owner Menus)
+-- 🚪 RDE DOORS - CLIENT
 -- ============================================
--- Version: 1.0.0 (Full ox_doorlock Integration + CRUD + Admin/Owner Menus + Real-Time Sync)
+-- Version: 3.0.0 (Double Door Support)
 -- Author: RDE | SerpentsByte
 -- ============================================
 
 local Ox, Config, L, json
-local loadedDoors = {}
-local doorEntities = {}
-local doorTargets = {}
-local doorGroups = {}
+local loadedDoors     = {}
+local doorEntities    = {}  -- doorId → entity (single) or {a=entity, b=entity} (double)
+local doorTargets     = {}
+local doorGroups      = {}
 local isSelectingDoor = false
 local selectionSphere = nil
-local playerLoaded = false
-local lastTargetUpdate = 0
+local playerLoaded    = false
+local lastTargetUpdate    = 0
 local targetUpdateCooldown = 500
-local activeTargets = 0
+local activeTargets    = 0
 local MAX_ACTIVE_TARGETS = 20
 local DEBUG_MODE = true
 
 -- ============================================
--- 🎵 Sound Configuration (Fixed)
+-- 🎵 Sound Configuration
 -- ============================================
 local doorSounds = {
-    lock = {name = 'door_lock', set = 'dlc_vinewood_casino_door_sounds'},
-    unlock = {name = 'door_unlock', set = 'dlc_vinewood_casino_door_sounds'},
-    knock = {name = 'knock_door', set = 'dlc_vinewood_casino_door_sounds'},
-    bell = {name = 'apartment_doorbell', set = 'dlc_vinewood_casino_door_sounds'}
+    lock   = { name = 'door_lock',          set = 'dlc_vinewood_casino_door_sounds' },
+    unlock = { name = 'door_unlock',         set = 'dlc_vinewood_casino_door_sounds' },
+    knock  = { name = 'knock_door',          set = 'dlc_vinewood_casino_door_sounds' },
+    bell   = { name = 'apartment_doorbell',  set = 'dlc_vinewood_casino_door_sounds' },
 }
 
 -- ============================================
 -- 📝 UTILITY FUNCTIONS
 -- ============================================
 local function debugPrint(...)
-    if DEBUG_MODE then
-        print('[RDE Doors | Client]', ...)
-    end
+    if DEBUG_MODE then print('[RDE Doors | Client]', ...) end
 end
 
 local function GetPlayerCharId()
-    if LocalPlayer.state.charId then
-        return LocalPlayer.state.charId
-    end
+    if LocalPlayer.state.charId then return LocalPlayer.state.charId end
     if Ox then
         local player = Ox.GetPlayer()
-        if player and player.charId then
-            return player.charId
-        end
+        if player and player.charId then return player.charId end
     end
     return nil
 end
@@ -54,10 +48,9 @@ end
 local function WaitForPlayerLoad()
     local attempts = 0
     while attempts < 100 do
-        local charId = GetPlayerCharId()
-        if charId then
+        if GetPlayerCharId() then
             playerLoaded = true
-            debugPrint('Player loaded - CharID:', charId)
+            debugPrint('Player loaded – CharID:', GetPlayerCharId())
             return true
         end
         Wait(200)
@@ -69,23 +62,25 @@ end
 
 local function ShowNotification(title, description, type)
     lib.notify({
-        title = title,
+        title    = title,
         description = description,
-        type = type,
-        icon = type == 'success' and '✅' or (type == 'error' and '❌' or (type == 'warning' and '⚠️' or 'ℹ️')),
-        iconAnimation = type == 'success' and 'beat' or nil
+        type     = type,
+        icon     = type == 'success' and '✅' or (type == 'error' and '❌' or (type == 'warning' and '⚠️' or 'ℹ️')),
+        iconAnimation = type == 'success' and 'beat' or nil,
     })
 end
 
+-- ============================================
+-- 🎨 3D TEXT
+-- ============================================
 local function Draw3DText(coords, text)
     if not coords or not Config or not Config.UI then return end
     local onScreen, x, y = GetScreenCoordFromWorldCoord(coords.x, coords.y, coords.z)
     if not onScreen then return end
     local camCoords = GetGameplayCamCoord()
-    local distance = #(vector3(coords.x, coords.y, coords.z) - camCoords)
+    local distance  = #(vector3(coords.x, coords.y, coords.z) - camCoords)
     if distance > (Config.UI.textDistance or 5.0) then return end
-    local scale = ((Config.UI.textScale or 0.35) / distance) * 2
-    scale = math.max(0.2, math.min(scale, 0.5))
+    local scale = math.max(0.2, math.min(((Config.UI.textScale or 0.35) / distance) * 2, 0.5))
     SetTextScale(scale, scale)
     SetTextFont(Config.UI.textFont or 4)
     SetTextProportional(1)
@@ -96,34 +91,65 @@ local function Draw3DText(coords, text)
         SetTextEdge(2, 0, 0, 0, 150)
         SetTextOutline()
     end
-    if Config.UI.textShadow then
-        SetTextDropShadow()
-    end
-    BeginTextCommandDisplayText("STRING")
+    if Config.UI.textShadow then SetTextDropShadow() end
+    BeginTextCommandDisplayText('STRING')
     AddTextComponentSubstringPlayerName(text)
     EndTextCommandDisplayText(x, y)
 end
 
+-- ============================================
+-- 🚪 DOOR SYSTEM HELPERS
+-- ============================================
+
+-- Calculates the center point for 3D text on a single entity
 local function CalculateDoorCenter(doorEntity)
     if not DoesEntityExist(doorEntity) then return nil end
     local doorCoords = GetEntityCoords(doorEntity)
-    local model = GetEntityModel(doorEntity)
-    local min, max = GetModelDimensions(model)
+    local model      = GetEntityModel(doorEntity)
+    local min, max   = GetModelDimensions(model)
     if not min or not max then
         return vector3(doorCoords.x, doorCoords.y, doorCoords.z + 1.0)
     end
-    local offsetX = (max.x + min.x) / 2.0
-    local offsetY = (max.y + min.y) / 2.0
-    local offsetZ = (max.z + min.z) / 2.0
-    local heading = GetEntityHeading(doorEntity)
-    local headingRad = math.rad(heading)
-    local rotatedX = offsetX * math.cos(headingRad) - offsetY * math.sin(headingRad)
-    local rotatedY = offsetX * math.sin(headingRad) + offsetY * math.cos(headingRad)
-    return vector3(
-        doorCoords.x + rotatedX,
-        doorCoords.y + rotatedY,
-        doorCoords.z + offsetZ
-    )
+    local offsetX   = (max.x + min.x) / 2.0
+    local offsetY   = (max.y + min.y) / 2.0
+    local offsetZ   = (max.z + min.z) / 2.0
+    local heading   = GetEntityHeading(doorEntity)
+    local rad       = math.rad(heading)
+    local rotX      = offsetX * math.cos(rad) - offsetY * math.sin(rad)
+    local rotY      = offsetX * math.sin(rad) + offsetY * math.cos(rad)
+    return vector3(doorCoords.x + rotX, doorCoords.y + rotY, doorCoords.z + offsetZ)
+end
+
+-- Returns the 3D text anchor for a door (midpoint for double, center for single)
+local function GetTextAnchor(doorId, door)
+    if door.door_a and door.door_b then
+        -- Double door: midpoint between the two entities (or fallback to stored coords midpoint)
+        local ents = doorEntities[doorId]
+        if ents and type(ents) == 'table' and ents.a and ents.b and DoesEntityExist(ents.a) and DoesEntityExist(ents.b) then
+            local ca = GetEntityCoords(ents.a)
+            local cb = GetEntityCoords(ents.b)
+            -- Take average of the two entity world positions, keep original Z height offset
+            local midX = (ca.x + cb.x) / 2.0
+            local midY = (ca.y + cb.y) / 2.0
+            -- Use the higher center-height of the two doors for text
+            local minA, maxA = GetModelDimensions(GetEntityModel(ents.a))
+            local minB, maxB = GetModelDimensions(GetEntityModel(ents.b))
+            local heightA = maxA and ((maxA.z + (minA and minA.z or 0.0)) / 2.0) or 1.0
+            local heightB = maxB and ((maxB.z + (minB and minB.z or 0.0)) / 2.0) or 1.0
+            local midZ = (ca.z + cb.z) / 2.0 + math.max(heightA, heightB)
+            return vector3(midX, midY, midZ)
+        else
+            -- Fallback: use stored coords midpoint (always computed on server)
+            return vector3(door.coords.x, door.coords.y, door.coords.z + 1.2)
+        end
+    else
+        -- Single door: use entity geometry center
+        local ent = doorEntities[doorId]
+        if ent and DoesEntityExist(ent) then
+            return CalculateDoorCenter(ent)
+        end
+        return vector3(door.coords.x, door.coords.y, door.coords.z + 1.0)
+    end
 end
 
 local function IsValidDoorEntity(entity)
@@ -131,231 +157,229 @@ local function IsValidDoorEntity(entity)
     if GetEntityType(entity) ~= 3 then return false end
     local min, max = GetModelDimensions(GetEntityModel(entity))
     if not min or not max then return false end
-    local height = math.abs(max.z - min.z)
-    local width = math.abs(max.x - min.x)
-    local depth = math.abs(max.y - min.y)
-    return height > 1.5 and (width < 3.0 or depth < 3.0)
+    return math.abs(max.z - min.z) > 1.5 and (math.abs(max.x - min.x) < 3.0 or math.abs(max.y - min.y) < 3.0)
 end
 
 local function GetDoorEntity(coords, model)
     if not coords then return 0, nil end
-    local coordsVec = type(coords) == 'table' and vector3(coords.x, coords.y, coords.z) or coords
+    local cv = type(coords) == 'table' and vector3(coords.x, coords.y, coords.z) or coords
     if model then
-        local hash = type(model) == 'string' and GetHashKey(model) or model
-        local entity = GetClosestObjectOfType(coordsVec.x, coordsVec.y, coordsVec.z, 5.0, hash, false, false, false)
+        local hash   = type(model) == 'string' and GetHashKey(model) or model
+        local entity = GetClosestObjectOfType(cv.x, cv.y, cv.z, 5.0, hash, false, false, false)
         if DoesEntityExist(entity) and IsValidDoorEntity(entity) then
             return entity, hash
         end
     end
-    local closestEntity, closestHash, closestDist = 0, nil, 999999.0
+    local best, bestHash, bestDist = 0, nil, 999999.0
     for _, entity in ipairs(GetGamePool('CObject')) do
         if DoesEntityExist(entity) and IsValidDoorEntity(entity) then
-            local entityCoords = GetEntityCoords(entity)
-            local dist = #(coordsVec - entityCoords)
-            if dist < 5.0 and dist < closestDist then
-                closestEntity = entity
-                closestHash = GetEntityModel(entity)
-                closestDist = dist
+            local ec   = GetEntityCoords(entity)
+            local dist = #(cv - ec)
+            if dist < 5.0 and dist < bestDist then
+                best = entity; bestHash = GetEntityModel(entity); bestDist = dist
             end
         end
     end
-    return closestEntity, closestHash
+    return best, bestHash
 end
 
-local function SetDoorState(doorEntity, locked, doorType)
-    if not DoesEntityExist(doorEntity) then return end
-    local doorHash = GetEntityModel(doorEntity)
-    local doorCoords = GetEntityCoords(doorEntity)
-    if locked then
-        DoorSystemSetDoorState(doorHash, doorCoords.x, doorCoords.y, doorCoords.z, 1, false, false)
-        FreezeEntityPosition(doorEntity, true)
-        PlaySoundFromEntity(-1, doorSounds.lock.name, doorEntity, doorSounds.lock.set, false, 0)
+-- Registers a door with GTA's door system (both single and double)
+local function RegisterDoorsWithSystem(doorId, door)
+    if door.door_a and door.door_b then
+        -- Double door: two entries, one hash each
+        local hashA = joaat(('rde_door_%s_a'):format(doorId))
+        local hashB = joaat(('rde_door_%s_b'):format(doorId))
+        local ca = door.door_a.coords
+        local cb = door.door_b.coords
+        local modelHashA = type(door.door_a.model) == 'string' and GetHashKey(door.door_a.model) or door.door_a.model
+        local modelHashB = type(door.door_b.model) == 'string' and GetHashKey(door.door_b.model) or door.door_b.model
+
+        AddDoorToSystem(hashA, modelHashA, ca.x, ca.y, ca.z, false, false, false)
+        DoorSystemSetDoorState(hashA, 4, false, false) -- reset
+        DoorSystemSetDoorState(hashA, door.locked and 1 or 0, false, false)
+
+        AddDoorToSystem(hashB, modelHashB, cb.x, cb.y, cb.z, false, false, false)
+        DoorSystemSetDoorState(hashB, 4, false, false)
+        DoorSystemSetDoorState(hashB, door.locked and 1 or 0, false, false)
+
+        door.door_a._hash = hashA
+        door.door_b._hash = hashB
     else
-        DoorSystemSetDoorState(doorHash, doorCoords.x, doorCoords.y, doorCoords.z, 0, false, false)
-        FreezeEntityPosition(doorEntity, false)
-        PlaySoundFromEntity(-1, doorSounds.unlock.name, doorEntity, doorSounds.unlock.set, false, 0)
+        -- Single door
+        local hash      = joaat(('rde_door_%s'):format(doorId))
+        local modelHash = type(door.model) == 'string' and GetHashKey(door.model) or door.model
+        local c         = door.coords
+
+        AddDoorToSystem(hash, modelHash, c.x, c.y, c.z, false, false, false)
+        DoorSystemSetDoorState(hash, 4, false, false)
+        DoorSystemSetDoorState(hash, door.locked and 1 or 0, false, false)
+
+        door._hash = hash
     end
-    if Config.Performance.useStateBags then
-        Entity(doorEntity).state.rde_door_locked = locked
+end
+
+local function SetDoorLockState(door, locked)
+    if door.door_a and door.door_b then
+        if door.door_a._hash then DoorSystemSetDoorState(door.door_a._hash, locked and 1 or 0, false, false) end
+        if door.door_b._hash then DoorSystemSetDoorState(door.door_b._hash, locked and 1 or 0, false, false) end
+    else
+        if door._hash then DoorSystemSetDoorState(door._hash, locked and 1 or 0, false, false) end
     end
+end
+
+local function PlayDoorSound(doorId, door, locked)
+    local coords = door.coords
+    if not coords then return end
+    local soundName = locked and doorSounds.lock.name or doorSounds.unlock.name
+    local soundSet  = locked and doorSounds.lock.set  or doorSounds.unlock.set
+    PlaySoundFromCoord(-1, soundName, coords.x, coords.y, coords.z, soundSet, false, 10.0, false)
+end
+
+-- ============================================
+-- 🎯 TARGET SYSTEM
+-- ============================================
+local function IsPlayerAdmin()
+    local groups = LocalPlayer.state.groups
+    if groups and (groups.admin or groups.superadmin) then return true end
+    if Ox then
+        local player = Ox.GetPlayer()
+        if player then
+            local pg = player.getGroups and player.getGroups() or {}
+            if pg.admin or pg.superadmin then return true end
+        end
+    end
+    return false
+end
+
+local function HasAccess(door)
+    if IsPlayerAdmin() then return true end
+    if not Ox then return false end
+    local player = Ox.GetPlayer()
+    if not player or not player.charId then return false end
+    local charId = tostring(player.charId)
+    if door.owner_charid and tostring(door.owner_charid) == charId then return true end
+    if door.access_list then
+        for _, id in ipairs(door.access_list) do
+            if tostring(id) == charId then return true end
+        end
+    end
+    return false
 end
 
 local function RemoveDoorTarget(doorId)
     if not doorTargets[doorId] then return end
-    local doorEntity = doorEntities[doorId]
-    if doorEntity and DoesEntityExist(doorEntity) then
-        if exports.ox_target then
-            exports.ox_target:removeLocalEntity(doorEntity)
+    local ents = doorEntities[doorId]
+    if exports.ox_target then
+        if type(ents) == 'table' then
+            if ents.a and DoesEntityExist(ents.a) then exports.ox_target:removeLocalEntity(ents.a) end
+            if ents.b and DoesEntityExist(ents.b) then exports.ox_target:removeLocalEntity(ents.b) end
+        elseif ents and DoesEntityExist(ents) then
+            exports.ox_target:removeLocalEntity(ents)
         end
     end
     doorTargets[doorId] = nil
     activeTargets = math.max(0, activeTargets - 1)
 end
 
-local function CanCreateMoreTargets()
-    return activeTargets < MAX_ACTIVE_TARGETS
-end
-
-local function PlayAnimation(dict, anim, duration, flag)
-    lib.requestAnimDict(dict, 5000)
-    TaskPlayAnim(cache.ped, dict, anim, 8.0, -8.0, duration, flag or 1, 0, false, false, false)
-    RemoveAnimDict(dict)
-end
-
-local function PlaySoundAtCoords(coords, soundName, soundSet, range)
-    PlaySoundFromCoord(-1, soundName, coords.x, coords.y, coords.z, soundSet, false, range or 10.0, false)
-end
-
-local function IsPlayerAdmin()
-    local groups = LocalPlayer.state.groups
-    if groups and (groups.admin or groups.superadmin) then
-        return true
-    end
-    if Ox then
-        local player = Ox.GetPlayer()
-        if player then
-            local playerGroups = player.getGroups and player.getGroups() or {}
-            if playerGroups.admin or playerGroups.superadmin then
-                return true
-            end
-        end
-    end
-    return false
-end
-
-local function HasAccess(door, source)
-    if not door or not source then return false end
-    if IsPlayerAdmin(source) then return true end
-    if not Ox then return false end
-    local player = Ox.GetPlayer(source)
-    if not player or not player.charId then return false end
-    local charId = tostring(player.charId)
-    if door.owner_charid and tostring(door.owner_charid) == charId then
-        return true
-    end
-    if door.access_list and type(door.access_list) == 'table' then
-        for _, accessCharId in ipairs(door.access_list) do
-            if tostring(accessCharId) == charId then
-                return true
-            end
-        end
-    end
-    return false
-end
-
--- ============================================
--- 🎯 TARGET SYSTEM (mit Door Groups und ox_inventory Support)
--- ============================================
-local function CreateDoorTarget(doorId, door)
-    if not doorId or not door or not door.coords or not L then return false end
-    if doorTargets[doorId] then RemoveDoorTarget(doorId) end
-    if not CanCreateMoreTargets() then return false end
-    local doorEntity = GetDoorEntity(door.coords, door.model)
-    if not DoesEntityExist(doorEntity) then return false end
-    SetDoorState(doorEntity, door.locked, door.type)
-    doorEntities[doorId] = doorEntity
+local function BuildTargetOptions(doorId, door)
+    if not L then return {} end
     local options = {
         {
-            name = 'door_toggle_' .. doorId,
-            label = door.locked and L.unlock or L.lock,
-            icon = door.locked and Config.Icons.unlock or Config.Icons.lock,
-            distance = Config.UI.interactionDistance or 2.5,
+            name     = 'door_toggle_' .. doorId,
+            label    = door.locked and L.unlock or L.lock,
+            icon     = door.locked and (Config and Config.Icons and Config.Icons.unlock or '🔓') or (Config and Config.Icons and Config.Icons.lock or '🔒'),
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
             onSelect = function()
                 TriggerServerEvent('rde_doors:toggleLock', doorId)
-            end
+            end,
         },
         {
-            name = 'door_ring_' .. doorId,
-            label = L.ringBell,
-            icon = Config.Icons.bell,
-            distance = Config.UI.interactionDistance or 2.5,
+            name     = 'door_ring_' .. doorId,
+            label    = L.ringBell,
+            icon     = Config and Config.Icons and Config.Icons.bell or '🔔',
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
             onSelect = function()
                 TriggerServerEvent('rde_doors:ringBell', doorId)
-                PlaySoundAtCoords(door.coords, doorSounds.bell.name, doorSounds.bell.set, 10.0)
+                PlaySoundFromCoord(-1, doorSounds.bell.name, door.coords.x, door.coords.y, door.coords.z, doorSounds.bell.set, false, 10.0, false)
             end,
-            canInteract = function()
-                return door.owner_charid ~= nil
-            end
+            canInteract = function() return door.owner_charid ~= nil end,
         },
         {
-            name = 'door_knock_' .. doorId,
-            label = L.knock,
-            icon = Config.Icons.knock,
-            distance = Config.UI.interactionDistance or 2.5,
+            name     = 'door_knock_' .. doorId,
+            label    = L.knock,
+            icon     = Config and Config.Icons and Config.Icons.knock or '👊',
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
             onSelect = function()
-                PlayAnimation('timetable@jimmy@doorknock@', 'knockdoor_idle', 1500, 48)
+                lib.requestAnimDict('timetable@jimmy@doorknock@', 5000)
+                TaskPlayAnim(cache.ped, 'timetable@jimmy@doorknock@', 'knockdoor_idle', 8.0, -8.0, 1500, 48, 0, false, false, false)
                 TriggerServerEvent('rde_doors:knock', doorId)
-                PlaySoundAtCoords(door.coords, doorSounds.knock.name, doorSounds.knock.set, 10.0)
+                PlaySoundFromCoord(-1, doorSounds.knock.name, door.coords.x, door.coords.y, door.coords.z, doorSounds.knock.set, false, 10.0, false)
             end,
-            canInteract = function()
-                return door.owner_charid ~= nil
-            end
+            canInteract = function() return door.owner_charid ~= nil end,
         },
         {
-            name = 'door_buy_' .. doorId,
-            label = (L.buy or 'Buy') .. ' ($' .. (door.price or 0) .. ')',
-            icon = Config.Icons.buy,
-            distance = Config.UI.interactionDistance or 2.5,
+            name     = 'door_buy_' .. doorId,
+            label    = (L.buy or 'Buy') .. ' ($' .. (door.price or 0) .. ')',
+            icon     = Config and Config.Icons and Config.Icons.buy or '💰',
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
             onSelect = function()
                 lib.callback('rde_doors:buyDoor', false, function(success, message)
-                    if not success then
-                        ShowNotification(L.error, message, 'error')
-                    end
+                    if not success then ShowNotification(L.error, message, 'error') end
                 end, doorId)
             end,
-            canInteract = function()
-                return door.price and door.price > 0 and not door.owner_charid
-            end
-        }
+            canInteract = function() return door.price and door.price > 0 and not door.owner_charid end,
+        },
     }
 
-    -- Owner Menu Option
-    if HasAccess(door, cache.playerId) then
+    if HasAccess(door) then
         table.insert(options, {
-            name = 'door_owner_' .. doorId,
-            label = L.manage,
-            icon = Config.Icons.manage,
-            distance = Config.UI.interactionDistance or 2.5,
-            onSelect = function()
-                OpenOwnerMenu(doorId)
-            end
+            name     = 'door_owner_' .. doorId,
+            label    = L.manage,
+            icon     = Config and Config.Icons and Config.Icons.manage or '🔧',
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            onSelect = function() OpenOwnerMenu(doorId) end,
         })
     end
 
-    -- Admin Menu Option
     if IsPlayerAdmin() then
         table.insert(options, {
-            name = 'door_admin_' .. doorId,
-            label = 'Admin Menu',
-            icon = Config.Icons.admin,
-            distance = Config.UI.interactionDistance or 2.5,
+            name     = 'door_admin_' .. doorId,
+            label    = 'Admin Menu',
+            icon     = Config and Config.Icons and Config.Icons.admin or '👑',
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            onSelect = function() OpenAdminMenu(doorId) end,
+        })
+        table.insert(options, {
+            name     = 'door_teleport_' .. doorId,
+            label    = L.teleport,
+            icon     = Config and Config.Icons and Config.Icons.map_pin or '📍',
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
             onSelect = function()
-                OpenAdminMenu(doorId)
-            end
+                DoScreenFadeOut(500); Wait(500)
+                SetEntityCoords(cache.ped, door.coords.x, door.coords.y, door.coords.z, false, false, false, false)
+                DoScreenFadeIn(500)
+                ShowNotification(L.success, L.teleported, 'success')
+            end,
         })
     end
 
-    -- Door Group Option
     if door.group_id then
         table.insert(options, {
-            name = 'door_group_' .. doorId,
-            label = '📁 ' .. (doorGroups[door.group_id] and doorGroups[door.group_id].name or 'Unknown'),
-            icon = Config.Icons.door_group,
-            distance = Config.UI.interactionDistance or 2.5,
-            onSelect = function()
-                OpenDoorGroupMenu(door.group_id)
-            end
+            name     = 'door_group_' .. doorId,
+            label    = '📁 ' .. (doorGroups[door.group_id] and doorGroups[door.group_id].name or 'Unknown'),
+            icon     = Config and Config.Icons and Config.Icons.door_group or '📁',
+            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            onSelect = function() OpenDoorGroupMenu(door.group_id) end,
         })
     end
 
-    -- ox_inventory Item Support
     if door.items and #door.items > 0 then
         for _, item in ipairs(door.items) do
             table.insert(options, {
-                name = 'door_use_item_' .. doorId .. '_' .. item,
-                label = string.format(L.itemRequired, item),
-                icon = '📦',
-                distance = Config.UI.interactionDistance or 2.5,
+                name     = 'door_item_' .. doorId .. '_' .. item,
+                label    = string.format(L.itemRequired, item),
+                icon     = '📦',
+                distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
                 onSelect = function()
                     lib.callback('rde_doors:useItem', false, function(success, message)
                         if success then
@@ -366,108 +390,116 @@ local function CreateDoorTarget(doorId, door)
                     end, doorId, item)
                 end,
                 canInteract = function()
-                    return exports.ox_inventory:GetItemCount(cache.playerId, item) > 0
-                end
+                    return exports.ox_inventory and exports.ox_inventory:GetItemCount(cache.playerId, item) > 0
+                end,
             })
         end
     end
 
-    -- Teleport Option (Admin Only)
-    if IsPlayerAdmin() then
-        table.insert(options, {
-            name = 'door_teleport_' .. doorId,
-            label = L.teleport,
-            icon = Config.Icons.map_pin,
-            distance = Config.UI.interactionDistance or 2.5,
-            onSelect = function()
-                local ped = PlayerPedId()
-                DoScreenFadeOut(500)
-                Wait(500)
-                SetEntityCoords(ped, door.coords.x, door.coords.y, door.coords.z, false, false, false, false)
-                DoScreenFadeIn(500)
-                ShowNotification(L.success, L.teleported, 'success')
-            end
-        })
-    end
+    return options
+end
 
-    local success = pcall(function()
-        if exports.ox_target then
-            exports.ox_target:addLocalEntity(doorEntity, options)
+local function CreateDoorTarget(doorId, door)
+    if not doorId or not door or not door.coords or not L then return false end
+    if doorTargets[doorId] then RemoveDoorTarget(doorId) end
+    if activeTargets >= MAX_ACTIVE_TARGETS then return false end
+
+    local options = BuildTargetOptions(doorId, door)
+
+    if door.door_a and door.door_b then
+        -- Double door: register both entities
+        local entA = GetDoorEntity(door.door_a.coords, door.door_a.model)
+        local entB = GetDoorEntity(door.door_b.coords, door.door_b.model)
+        if not DoesEntityExist(entA) or not DoesEntityExist(entB) then return false end
+
+        RegisterDoorsWithSystem(doorId, door)
+        doorEntities[doorId] = { a = entA, b = entB }
+
+        local ok = pcall(function()
+            if exports.ox_target then
+                -- Register same options on both door entities
+                exports.ox_target:addLocalEntity(entA, options)
+                exports.ox_target:addLocalEntity(entB, options)
+            end
+        end)
+        if ok then
+            doorTargets[doorId] = true
+            activeTargets = activeTargets + 1
+            return true
         end
-    end)
-    if success then
-        doorTargets[doorId] = true
-        activeTargets = activeTargets + 1
-        return true
+    else
+        -- Single door
+        local entity = GetDoorEntity(door.coords, door.model)
+        if not DoesEntityExist(entity) then return false end
+
+        RegisterDoorsWithSystem(doorId, door)
+        doorEntities[doorId] = entity
+
+        local ok = pcall(function()
+            if exports.ox_target then
+                exports.ox_target:addLocalEntity(entity, options)
+            end
+        end)
+        if ok then
+            doorTargets[doorId] = true
+            activeTargets = activeTargets + 1
+            return true
+        end
     end
     return false
 end
 
 -- ============================================
--- 📋 MENU FUNCTIONS (CRUD + Admin/Owner Menus)
+-- 📋 MENU FUNCTIONS
 -- ============================================
 function OpenOwnerMenu(doorId)
     local door = loadedDoors[doorId]
     if not door or not L then return end
     lib.registerContext({
-        id = 'door_owner_menu_' .. doorId,
+        id    = 'door_owner_menu_' .. doorId,
         title = door.name or L.door,
         options = {
             {
                 title = L.setPrice,
                 description = door.price and door.price > 0 and ('Current: $' .. door.price) or L.notForSale,
-                icon = Config.Icons.dollar_sign,
+                icon = Config and Config.Icons and Config.Icons.dollar_sign or '💲',
                 onSelect = function()
-                    local input = lib.inputDialog(L.setPrice, {
-                        { type = 'number', label = L.price, default = door.price or 0, min = 0, max = 999999 }
-                    })
-                    if input then
-                        TriggerServerEvent('rde_doors:setPrice', doorId, input[1])
-                    end
-                end
+                    local input = lib.inputDialog(L.setPrice, {{ type='number', label=L.price, default=door.price or 0, min=0, max=999999 }})
+                    if input then TriggerServerEvent('rde_doors:setPrice', doorId, input[1]) end
+                end,
             },
             {
                 title = L.manageAccess,
                 description = L.manageAccessDesc,
-                icon = Config.Icons.user,
-                onSelect = function()
-                    OpenAccessMenu(doorId)
-                end
+                icon = Config and Config.Icons and Config.Icons.user or '👤',
+                onSelect = function() OpenAccessMenu(doorId) end,
             },
             {
                 title = L.rename,
                 description = 'Current: ' .. (door.name or 'Unnamed'),
-                icon = Config.Icons.pen,
+                icon = Config and Config.Icons and Config.Icons.pen or '✏️',
                 onSelect = function()
-                    local input = lib.inputDialog(L.rename, {
-                        { type = 'input', label = L.name, default = door.name, required = true, min = 3, max = 50 }
-                    })
-                    if input then
-                        TriggerServerEvent('rde_doors:rename', doorId, input[1])
-                    end
-                end
+                    local input = lib.inputDialog(L.rename, {{ type='input', label=L.name, default=door.name, required=true, min=3, max=50 }})
+                    if input then TriggerServerEvent('rde_doors:rename', doorId, input[1]) end
+                end,
             },
             {
                 title = door.locked and L.unlock or L.lock,
                 description = L.toggleLock,
-                icon = door.locked and Config.Icons.lock or Config.Icons.unlock,
-                onSelect = function()
-                    TriggerServerEvent('rde_doors:toggleLock', doorId)
-                end
+                icon = door.locked and (Config and Config.Icons and Config.Icons.lock or '🔒') or (Config and Config.Icons and Config.Icons.unlock or '🔓'),
+                onSelect = function() TriggerServerEvent('rde_doors:toggleLock', doorId) end,
             },
             {
                 title = L.teleport,
                 description = L.teleportDesc,
-                icon = Config.Icons.map_pin,
+                icon = Config and Config.Icons and Config.Icons.map_pin or '📍',
                 onSelect = function()
-                    local ped = PlayerPedId()
-                    DoScreenFadeOut(500)
-                    Wait(500)
-                    SetEntityCoords(ped, door.coords.x, door.coords.y, door.coords.z, false, false, false, false)
+                    DoScreenFadeOut(500); Wait(500)
+                    SetEntityCoords(cache.ped, door.coords.x, door.coords.y, door.coords.z, false, false, false, false)
                     DoScreenFadeIn(500)
                     ShowNotification(L.success, L.teleported, 'success')
-                end
-            }
+                end,
+            },
         }
     })
     lib.showContext('door_owner_menu_' .. doorId)
@@ -480,64 +512,49 @@ function OpenAccessMenu(doorId)
         {
             title = L.addPlayer,
             description = L.addPlayerDesc,
-            icon = Config.Icons.user_plus,
+            icon = Config and Config.Icons and Config.Icons.user_plus or '👤➕',
             onSelect = function()
-                local nearbyPlayers = lib.getNearbyPlayers(GetEntityCoords(PlayerPedId()), 10.0, true)
-                if #nearbyPlayers == 0 then
-                    ShowNotification(L.error, L.noPlayersNearby, 'error')
-                    return
-                end
-                local playerOptions = {}
-                for _, player in ipairs(nearbyPlayers) do
-                    table.insert(playerOptions, {
-                        title = GetPlayerName(player.id) or 'Unknown',
-                        description = 'ID: ' .. GetPlayerServerId(player.id),
-                        icon = Config.Icons.user,
+                local nearby = lib.getNearbyPlayers(GetEntityCoords(PlayerPedId()), 10.0, true)
+                if #nearby == 0 then ShowNotification(L.error, L.noPlayersNearby, 'error'); return end
+                local playerOpts = {}
+                for _, p in ipairs(nearby) do
+                    table.insert(playerOpts, {
+                        title = GetPlayerName(p.id) or 'Unknown',
+                        description = 'ID: ' .. GetPlayerServerId(p.id),
+                        icon = Config and Config.Icons and Config.Icons.user or '👤',
                         onSelect = function()
-                            TriggerServerEvent('rde_doors:manageAccess', doorId, GetPlayerServerId(player.id), true)
-                        end
+                            TriggerServerEvent('rde_doors:manageAccess', doorId, GetPlayerServerId(p.id), true)
+                        end,
                     })
                 end
-                lib.registerContext({
-                    id = 'add_player_menu_' .. doorId,
-                    title = L.selectPlayer,
-                    options = playerOptions
-                })
+                lib.registerContext({ id='add_player_menu_'..doorId, title=L.selectPlayer, options=playerOpts })
                 lib.showContext('add_player_menu_' .. doorId)
-            end
+            end,
         }
     }
     if door.access_list and #door.access_list > 0 then
         table.insert(options, {
             title = L.removePlayer,
             description = #door.access_list .. ' ' .. L.playersWithAccess,
-            icon = Config.Icons.user_minus,
+            icon = Config and Config.Icons and Config.Icons.user_minus or '👤➖',
             onSelect = function()
-                local removeOptions = {}
+                local removeOpts = {}
                 for _, charId in ipairs(door.access_list) do
-                    table.insert(removeOptions, {
+                    table.insert(removeOpts, {
                         title = 'CharID: ' .. charId,
                         description = L.revokeAccess,
-                        icon = Config.Icons.user_xmark,
+                        icon = Config and Config.Icons and Config.Icons.user_xmark or '👤❌',
                         onSelect = function()
                             TriggerServerEvent('rde_doors:manageAccess', doorId, charId, false)
-                        end
+                        end,
                     })
                 end
-                lib.registerContext({
-                    id = 'remove_player_menu_' .. doorId,
-                    title = L.removeAccess,
-                    options = removeOptions
-                })
+                lib.registerContext({ id='remove_player_menu_'..doorId, title=L.removeAccess, options=removeOpts })
                 lib.showContext('remove_player_menu_' .. doorId)
-            end
+            end,
         })
     end
-    lib.registerContext({
-        id = 'access_menu_' .. doorId,
-        title = L.accessManagement,
-        options = options
-    })
+    lib.registerContext({ id='access_menu_'..doorId, title=L.accessManagement, options=options })
     lib.showContext('access_menu_' .. doorId)
 end
 
@@ -545,77 +562,64 @@ function OpenAdminMenu(doorId)
     local door = loadedDoors[doorId]
     if not door or not L then return end
     local typeOptions = {}
-    for typeKey, typeData in pairs(Config.DoorTypes or {}) do
+    for typeKey, typeData in pairs(Config and Config.DoorTypes or {}) do
         table.insert(typeOptions, { value = typeKey, label = typeData.name })
     end
     lib.registerContext({
-        id = 'door_admin_menu_' .. doorId,
-        title = 'Admin - ' .. (door.name or L.door),
+        id    = 'door_admin_menu_' .. doorId,
+        title = 'Admin – ' .. (door.name or L.door),
         options = {
             {
                 title = L.editDoor,
                 description = L.editDoorDesc,
-                icon = Config.Icons.pen_square,
+                icon = Config and Config.Icons and Config.Icons.pen_square or '✏️',
                 onSelect = function()
                     local input = lib.inputDialog(L.editDoor, {
-                        { type = 'input', label = L.name, default = door.name, required = true },
-                        { type = 'number', label = L.price, default = door.price or 0, min = 0, max = 999999 },
-                        { type = 'select', label = L.type, options = typeOptions, default = door.type }
+                        { type='input',  label=L.name,  default=door.name, required=true },
+                        { type='number', label=L.price, default=door.price or 0, min=0, max=999999 },
+                        { type='select', label=L.type,  options=typeOptions, default=door.type },
                     })
                     if input then
-                        TriggerServerEvent('rde_doors:updateDoor', doorId, {
-                            name = input[1],
-                            price = input[2],
-                            type = input[3]
-                        })
+                        TriggerServerEvent('rde_doors:updateDoor', doorId, { name=input[1], price=input[2], type=input[3] })
                     end
-                end
+                end,
             },
             {
                 title = L.deleteDoor,
                 description = L.deleteDoorDesc,
-                icon = Config.Icons.trash,
+                icon = Config and Config.Icons and Config.Icons.trash or '🗑️',
                 onSelect = function()
                     local confirm = lib.alertDialog({
-                        header = L.deleteDoor,
+                        header  = L.deleteDoor,
                         content = (L.deleteConfirm or 'Are you sure?') .. '\n\n' .. (door.name or 'Unnamed'),
-                        centered = true,
-                        cancel = true
+                        centered = true, cancel = true,
                     })
-                    if confirm == 'confirm' then
-                        TriggerServerEvent('rde_doors:deleteDoor', doorId)
-                    end
-                end
+                    if confirm == 'confirm' then TriggerServerEvent('rde_doors:deleteDoor', doorId) end
+                end,
             },
             {
                 title = L.teleport,
                 description = L.teleportDesc,
-                icon = Config.Icons.map_pin,
+                icon = Config and Config.Icons and Config.Icons.map_pin or '📍',
                 onSelect = function()
-                    local ped = PlayerPedId()
-                    DoScreenFadeOut(500)
-                    Wait(500)
-                    SetEntityCoords(ped, door.coords.x, door.coords.y, door.coords.z, false, false, false, false)
+                    DoScreenFadeOut(500); Wait(500)
+                    SetEntityCoords(cache.ped, door.coords.x, door.coords.y, door.coords.z, false, false, false, false)
                     DoScreenFadeIn(500)
                     ShowNotification(L.success, L.teleported, 'success')
-                end
+                end,
             },
             {
                 title = 'Door Group Management',
-                description = 'Add or remove door from groups',
-                icon = Config.Icons.door_group,
-                onSelect = function()
-                    OpenDoorGroupAdminMenu(doorId)
-                end
+                description = 'Add or remove from groups',
+                icon = Config and Config.Icons and Config.Icons.door_group or '📁',
+                onSelect = function() OpenDoorGroupAdminMenu(doorId) end,
             },
             {
                 title = 'Set Required Items',
                 description = 'Manage items required to open this door',
                 icon = '📦',
-                onSelect = function()
-                    OpenDoorItemsMenu(doorId)
-                end
-            }
+                onSelect = function() OpenDoorItemsMenu(doorId) end,
+            },
         }
     })
     lib.showContext('door_admin_menu_' .. doorId)
@@ -625,46 +629,30 @@ function OpenDoorGroupMenu(groupId)
     local group = doorGroups[groupId]
     if not group or not L then return end
     lib.registerContext({
-        id = 'door_group_menu_' .. groupId,
+        id    = 'door_group_menu_' .. groupId,
         title = '📁 ' .. group.name,
         options = {
             {
                 title = 'Rename Group',
-                description = 'Change the name of this group',
-                icon = Config.Icons.pen,
+                icon  = Config and Config.Icons and Config.Icons.pen or '✏️',
                 onSelect = function()
-                    local input = lib.inputDialog('Rename Group', {
-                        { type = 'input', label = 'Name', default = group.name, required = true, min = 3, max = 50 }
-                    })
-                    if input then
-                        TriggerServerEvent('rde_doors:renameGroup', groupId, input[1])
-                    end
-                end
+                    local input = lib.inputDialog('Rename Group', {{ type='input', label='Name', default=group.name, required=true, min=3, max=50 }})
+                    if input then TriggerServerEvent('rde_doors:renameGroup', groupId, input[1]) end
+                end,
             },
             {
                 title = 'Delete Group',
-                description = 'Permanently delete this group',
-                icon = Config.Icons.trash,
+                icon  = Config and Config.Icons and Config.Icons.trash or '🗑️',
                 onSelect = function()
-                    local confirm = lib.alertDialog({
-                        header = 'Delete Group',
-                        content = 'Are you sure you want to delete this group?\n\n' .. group.name,
-                        centered = true,
-                        cancel = true
-                    })
-                    if confirm == 'confirm' then
-                        TriggerServerEvent('rde_doors:deleteGroup', groupId)
-                    end
-                end
+                    local confirm = lib.alertDialog({ header='Delete Group', content='Are you sure?\n\n'..group.name, centered=true, cancel=true })
+                    if confirm == 'confirm' then TriggerServerEvent('rde_doors:deleteGroup', groupId) end
+                end,
             },
             {
                 title = 'Manage Group Doors',
-                description = 'View and manage doors in this group',
-                icon = Config.Icons.door_group,
-                onSelect = function()
-                    OpenGroupDoorsMenu(groupId)
-                end
-            }
+                icon  = Config and Config.Icons and Config.Icons.door_group or '📁',
+                onSelect = function() OpenGroupDoorsMenu(groupId) end,
+            },
         }
     })
     lib.showContext('door_group_menu_' .. groupId)
@@ -673,263 +661,326 @@ end
 function OpenDoorGroupAdminMenu(doorId)
     local door = loadedDoors[doorId]
     if not door or not L then return end
-    local groupOptions = {}
+    local opts = {}
     for groupId, group in pairs(doorGroups) do
-        table.insert(groupOptions, {
+        table.insert(opts, {
             title = '📁 ' .. group.name,
-            description = 'Click to add/remove door',
-            icon = Config.Icons.door_group,
+            description = door.group_id == groupId and '✓ Currently in this group' or 'Click to add/remove',
+            icon = Config and Config.Icons and Config.Icons.door_group or '📁',
             onSelect = function()
-                local isInGroup = door.group_id == groupId
-                if isInGroup then
+                if door.group_id == groupId then
                     TriggerServerEvent('rde_doors:removeFromGroup', doorId, groupId)
                 else
                     TriggerServerEvent('rde_doors:addToGroup', doorId, groupId)
                 end
-            end
+            end,
         })
     end
-    table.insert(groupOptions, {
+    table.insert(opts, {
         title = 'Create New Group',
-        description = 'Create a new door group',
-        icon = Config.Icons.plus,
+        icon  = Config and Config.Icons and Config.Icons.plus or '➕',
         onSelect = function()
-            local input = lib.inputDialog('Create Door Group', {
-                { type = 'input', label = 'Name', required = true, min = 3, max = 50 }
-            })
-            if input then
-                TriggerServerEvent('rde_doors:createGroup', input[1])
-            end
-        end
+            local input = lib.inputDialog('Create Door Group', {{ type='input', label='Name', required=true, min=3, max=50 }})
+            if input then TriggerServerEvent('rde_doors:createGroup', input[1]) end
+        end,
     })
-    lib.registerContext({
-        id = 'door_group_admin_menu_' .. doorId,
-        title = 'Door Group Management',
-        options = groupOptions
-    })
+    lib.registerContext({ id='door_group_admin_menu_'..doorId, title='Door Group Management', options=opts })
     lib.showContext('door_group_admin_menu_' .. doorId)
 end
 
 function OpenGroupDoorsMenu(groupId)
     local group = doorGroups[groupId]
     if not group or not L then return end
-    local options = {}
+    local opts = {}
     for _, doorId in ipairs(group.doors) do
         local door = loadedDoors[doorId]
         if door then
-            table.insert(options, {
-                title = (door.locked and '🔒 ' or '🔓 ') .. (door.name or 'Unnamed Door'),
-                description = 'ID: ' .. doorId,
-                icon = door.locked and Config.Icons.lock or Config.Icons.unlock,
-                onSelect = function()
-                    OpenAdminMenu(doorId)
-                end
+            table.insert(opts, {
+                title = (door.locked and '🔒 ' or '🔓 ') .. (door.name or 'Unnamed'),
+                description = 'ID: ' .. doorId .. (door.door_a and ' [DOUBLE]' or ''),
+                icon = door.locked and (Config and Config.Icons and Config.Icons.lock or '🔒') or (Config and Config.Icons and Config.Icons.unlock or '🔓'),
+                onSelect = function() OpenAdminMenu(doorId) end,
             })
         end
     end
-    lib.registerContext({
-        id = 'group_doors_menu_' .. groupId,
-        title = 'Doors in ' .. group.name,
-        options = options
-    })
+    lib.registerContext({ id='group_doors_menu_'..groupId, title='Doors in ' .. group.name, options=opts })
     lib.showContext('group_doors_menu_' .. groupId)
 end
 
 function OpenDoorItemsMenu(doorId)
     local door = loadedDoors[doorId]
     if not door or not L then return end
-    local options = {
+    local opts = {
         {
             title = 'Add Required Item',
-            description = 'Add an item required to open this door',
-            icon = '📦',
+            icon  = '📦',
             onSelect = function()
-                local input = lib.inputDialog('Add Required Item', {
-                    { type = 'input', label = 'Item Name', required = true }
-                })
-                if input then
-                    TriggerServerEvent('rde_doors:addDoorItem', doorId, input[1])
-                end
-            end
+                local input = lib.inputDialog('Add Required Item', {{ type='input', label='Item Name', required=true }})
+                if input then TriggerServerEvent('rde_doors:addDoorItem', doorId, input[1]) end
+            end,
         }
     }
     if door.items and #door.items > 0 then
         for _, item in ipairs(door.items) do
-            table.insert(options, {
+            table.insert(opts, {
                 title = item,
-                description = 'Click to remove this item',
-                icon = '🗑️',
-                onSelect = function()
-                    TriggerServerEvent('rde_doors:removeDoorItem', doorId, item)
-                end
+                description = 'Click to remove',
+                icon  = '🗑️',
+                onSelect = function() TriggerServerEvent('rde_doors:removeDoorItem', doorId, item) end,
             })
         end
     end
-    lib.registerContext({
-        id = 'door_items_menu_' .. doorId,
-        title = 'Required Items for ' .. (door.name or 'Door'),
-        options = options
-    })
+    lib.registerContext({ id='door_items_menu_'..doorId, title='Required Items – ' .. (door.name or 'Door'), options=opts })
     lib.showContext('door_items_menu_' .. doorId)
 end
 
 function OpenDoorManagerMenu()
     if not L then return end
-    local options = {
+    local opts = {
         {
             title = L.createDoor,
             description = L.createDoorDesc,
-            icon = Config.Icons.plus,
-            onSelect = function()
-                TriggerEvent('rde_doors:startDoorSelection')
-            end
+            icon  = Config and Config.Icons and Config.Icons.plus or '➕',
+            onSelect = function() TriggerEvent('rde_doors:startDoorSelection') end,
         },
         {
             title = L.refreshDoors,
             description = L.refreshDoorsDesc,
-            icon = Config.Icons.rotate,
+            icon  = Config and Config.Icons and Config.Icons.rotate or '🔄',
             onSelect = function()
                 TriggerServerEvent('rde_doors:requestSync')
                 ShowNotification(L.success, L.doorsRefreshed, 'success')
-            end
+            end,
         },
         {
             title = 'Door Group Manager',
             description = 'Manage door groups',
-            icon = Config.Icons.door_group,
-            onSelect = function()
-                OpenDoorGroupManagerMenu()
-            end
-        }
+            icon  = Config and Config.Icons and Config.Icons.door_group or '📁',
+            onSelect = function() OpenDoorGroupManagerMenu() end,
+        },
     }
     local doorCount = 0
     for doorId, door in pairs(loadedDoors) do
         doorCount = doorCount + 1
-        local doorType = (Config.DoorTypes and Config.DoorTypes[door.type]) or { name = 'Single Door' }
-        table.insert(options, {
+        local typeData = Config and Config.DoorTypes and Config.DoorTypes[door.type]
+        local typeName = typeData and typeData.name or (door.door_a and 'Double Door' or 'Single Door')
+        table.insert(opts, {
             title = (door.locked and '🔒 ' or '🔓 ') .. (door.name or L.door),
-            description = doorType.name .. ' | ' .. (door.owner_name or 'No Owner') .. ' | $' .. (door.price or 0),
-            icon = door.locked and Config.Icons.lock or Config.Icons.unlock,
-            onSelect = function()
-                OpenAdminMenu(doorId)
-            end
+            description = typeName .. ' | ' .. (door.owner_name or 'No Owner') .. ' | $' .. (door.price or 0),
+            icon  = door.locked and (Config and Config.Icons and Config.Icons.lock or '🔒') or (Config and Config.Icons and Config.Icons.unlock or '🔓'),
+            onSelect = function() OpenAdminMenu(doorId) end,
         })
     end
-    lib.registerContext({
-        id = 'door_manager_menu',
-        title = 'Door Manager (' .. doorCount .. ')',
-        options = options
-    })
+    lib.registerContext({ id='door_manager_menu', title='Door Manager (' .. doorCount .. ')', options=opts })
     lib.showContext('door_manager_menu')
 end
 
 function OpenDoorGroupManagerMenu()
     if not L then return end
-    local options = {
+    local opts = {
         {
             title = 'Create New Group',
-            description = 'Create a new door group',
-            icon = Config.Icons.plus,
+            icon  = Config and Config.Icons and Config.Icons.plus or '➕',
             onSelect = function()
-                local input = lib.inputDialog('Create Door Group', {
-                    { type = 'input', label = 'Name', required = true, min = 3, max = 50 }
-                })
-                if input then
-                    TriggerServerEvent('rde_doors:createGroup', input[1])
-                end
-            end
+                local input = lib.inputDialog('Create Door Group', {{ type='input', label='Name', required=true, min=3, max=50 }})
+                if input then TriggerServerEvent('rde_doors:createGroup', input[1]) end
+            end,
         }
     }
     for groupId, group in pairs(doorGroups) do
-        table.insert(options, {
+        table.insert(opts, {
             title = '📁 ' .. group.name,
             description = #group.doors .. ' doors in group',
-            icon = Config.Icons.door_group,
-            onSelect = function()
-                OpenDoorGroupMenu(groupId)
-            end
+            icon  = Config and Config.Icons and Config.Icons.door_group or '📁',
+            onSelect = function() OpenDoorGroupMenu(groupId) end,
         })
     end
-    lib.registerContext({
-        id = 'door_group_manager_menu',
-        title = 'Door Group Manager (' .. #options - 1 .. ' groups)',
-        options = options
-    })
+    lib.registerContext({ id='door_group_manager_menu', title='Door Group Manager', options=opts })
     lib.showContext('door_group_manager_menu')
 end
 
 -- ============================================
--- 🎯 DOOR SELECTION
+-- 🎯 DOOR SELECTION (Single + Double)
 -- ============================================
 local function RotationToDirection(rotation)
-    local z = math.rad(rotation.z)
-    local x = math.rad(rotation.x)
+    local z   = math.rad(rotation.z)
+    local x   = math.rad(rotation.x)
     local num = math.abs(math.cos(x))
     return vector3(-math.sin(z) * num, math.cos(z) * num, math.sin(x))
 end
 
-RegisterNetEvent('rde_doors:startDoorSelection', function()
-    if isSelectingDoor or not L then return end
-    isSelectingDoor = true
-    selectionSphere = CreateObject(GetHashKey('prop_tennis_ball'), 0.0, 0.0, 0.0, false, false, false)
-    SetEntityAlpha(selectionSphere, 100, false)
-    SetEntityCollision(selectionSphere, false, false)
-    FreezeEntityPosition(selectionSphere, true)
-    ShowNotification(L.selectingDoor, L.confirmSelection, 'inform')
+-- Shared selection loop — lets admin pick one or two entities from the world
+-- Returns either { entity } or { entityA, entityB } depending on doorCount
+local function RunEntitySelectionLoop(doorCount, promptText)
+    local selected = {}
+    local sphere   = CreateObject(GetHashKey('prop_tennis_ball'), 0.0, 0.0, 0.0, false, false, false)
+    SetEntityAlpha(sphere, 100, false)
+    SetEntityCollision(sphere, false, false)
+    FreezeEntityPosition(sphere, true)
+    ShowNotification(L.selectingDoor, promptText or L.confirmSelection, 'inform')
+
+    local cancelled = false
     CreateThread(function()
-        while isSelectingDoor do
+        while #selected < doorCount and not cancelled do
             Wait(0)
             DisableControlAction(0, 24, true)
             DisableControlAction(0, 257, true)
             DisableControlAction(0, 140, true)
             DisableControlAction(0, 141, true)
             DisableControlAction(0, 142, true)
+
             local camCoords = GetGameplayCamCoord()
-            local camRot = GetGameplayCamRot(2)
-            local direction = RotationToDirection(camRot)
-            local dest = camCoords + (direction * 10.0)
-            local ray = StartShapeTestRay(camCoords.x, camCoords.y, camCoords.z, dest.x, dest.y, dest.z, -1, -1, 0)
+            local camRot    = GetGameplayCamRot(2)
+            local dir       = RotationToDirection(camRot)
+            local dest      = camCoords + (dir * 10.0)
+            local ray       = StartShapeTestRay(camCoords.x, camCoords.y, camCoords.z, dest.x, dest.y, dest.z, -1, -1, 0)
             local _, hit, endCoords, _, entityHit = GetShapeTestResult(ray)
-            if DoesEntityExist(selectionSphere) then
-                SetEntityCoords(selectionSphere, endCoords.x, endCoords.y, endCoords.z, false, false, false, false)
+
+            if DoesEntityExist(sphere) then
+                SetEntityCoords(sphere, endCoords.x, endCoords.y, endCoords.z, false, false, false, false)
             end
-            Draw3DText(endCoords, L.confirmSelection)
+
+            -- Highlight already selected entities
+            for _, selEnt in ipairs(selected) do
+                SetEntityDrawOutline(selEnt, true)
+            end
+
             if IsDisabledControlJustPressed(0, 24) and hit and DoesEntityExist(entityHit) then
-                local doorCoords = GetEntityCoords(entityHit)
-                local doorHeading = GetEntityHeading(entityHit)
-                local model = GetEntityModel(entityHit)
                 if not IsValidDoorEntity(entityHit) then
                     ShowNotification(L.error, L.invalidDoor, 'error')
                 else
-                    local input = lib.inputDialog(L.createDoor, {
-                        { type = 'input', label = L.name, default = L.newDoor, required = true, min = 3, max = 50 },
-                        { type = 'number', label = L.price, default = 0, min = 0, max = 999999 }
-                    })
-                    if input then
-                        TriggerServerEvent('rde_doors:createDoor', {
-                            name = input[1],
-                            model = model,
-                            coords = { x = doorCoords.x, y = doorCoords.y, z = doorCoords.z },
-                            heading = doorHeading,
-                            locked = true,
-                            price = input[2]
-                        })
+                    -- Check not already selected
+                    local alreadySel = false
+                    for _, e in ipairs(selected) do if e == entityHit then alreadySel = true; break end end
+                    if not alreadySel then
+                        table.insert(selected, entityHit)
+                        SetEntityDrawOutline(entityHit, true)
+                        if #selected < doorCount then
+                            ShowNotification(L.info or 'ℹ️ Info', ('Door %d/%d selected. Select door %d now.'):format(#selected, doorCount, #selected + 1), 'inform')
+                        end
                     end
                 end
-                isSelectingDoor = false
-                if DoesEntityExist(selectionSphere) then
-                    DeleteEntity(selectionSphere)
-                end
             end
+
             if IsControlJustPressed(0, 25) then
-                isSelectingDoor = false
-                if DoesEntityExist(selectionSphere) then
-                    DeleteEntity(selectionSphere)
-                end
-                ShowNotification(L.cancelled, L.doorSelectionCancelled, 'inform')
+                cancelled = true
             end
         end
+
+        if DoesEntityExist(sphere) then DeleteEntity(sphere) end
+        for _, e in ipairs(selected) do SetEntityDrawOutline(e, false) end
     end)
+
+    -- Wait for the thread to finish
+    while #selected < doorCount and not cancelled do Wait(100) end
+
+    if cancelled then return nil end
+    return selected
+end
+
+RegisterNetEvent('rde_doors:startDoorSelection', function()
+    if isSelectingDoor or not L then return end
+    isSelectingDoor = true
+
+    -- Ask single or double via proper input select (alertDialog hat nur einen Button = verwirrend)
+    local typeInput = lib.inputDialog(L.selectDoorType or 'Select Door Type', {
+        {
+            type    = 'select',
+            label   = 'Door Type',
+            options = {
+                { value = 'single', label = '🚪  Single Door  —  one entity' },
+                { value = 'double', label = '🚪🚪  Double Door  —  two entities that open together' },
+            },
+            default = 'single',
+        },
+    })
+
+    if not typeInput then
+        isSelectingDoor = false
+        ShowNotification(L.cancelled, L.doorSelectionCancelled, 'inform')
+        return
+    end
+
+    local isDouble = (typeInput[1] == 'double')
+
+    if isDouble then
+        -- Double door: select two entities
+        ShowNotification(L.info or 'Info', 'Select the FIRST door entity (Left Click)', 'inform')
+        local entities = RunEntitySelectionLoop(2, 'Select FIRST door → then SECOND door')
+        if not entities or #entities < 2 then
+            isSelectingDoor = false
+            ShowNotification(L.cancelled, L.doorSelectionCancelled, 'inform')
+            return
+        end
+        local entA, entB = entities[1], entities[2]
+        local coordsA    = GetEntityCoords(entA)
+        local coordsB    = GetEntityCoords(entB)
+        local modelA     = GetEntityModel(entA)
+        local modelB     = GetEntityModel(entB)
+        local headingA   = GetEntityHeading(entA)
+        local headingB   = GetEntityHeading(entB)
+
+        -- Midpoint for display coords
+        local midCoords = {
+            x = (coordsA.x + coordsB.x) / 2.0,
+            y = (coordsA.y + coordsB.y) / 2.0,
+            z = (coordsA.z + coordsB.z) / 2.0,
+        }
+
+        local input = lib.inputDialog(L.createDoor, {
+            { type='input',  label=L.name,  default=L.newDoor, required=true, min=3, max=50 },
+            { type='number', label=L.price, default=0, min=0, max=999999 },
+        })
+        if input then
+            TriggerServerEvent('rde_doors:createDoor', {
+                name   = input[1],
+                type   = 'double',
+                coords = midCoords,
+                model  = '',    -- no single model for double doors
+                locked = true,
+                price  = input[2],
+                door_a = {
+                    model   = GetHashKey and modelA or modelA,
+                    coords  = { x = coordsA.x, y = coordsA.y, z = coordsA.z },
+                    heading = headingA,
+                },
+                door_b = {
+                    model   = modelB,
+                    coords  = { x = coordsB.x, y = coordsB.y, z = coordsB.z },
+                    heading = headingB,
+                },
+            })
+        end
+    else
+        -- Single door
+        local entities = RunEntitySelectionLoop(1, L.confirmSelection)
+        if not entities or #entities < 1 then
+            isSelectingDoor = false
+            ShowNotification(L.cancelled, L.doorSelectionCancelled, 'inform')
+            return
+        end
+        local entity    = entities[1]
+        local doorCoords = GetEntityCoords(entity)
+        local model      = GetEntityModel(entity)
+        local heading    = GetEntityHeading(entity)
+
+        local input = lib.inputDialog(L.createDoor, {
+            { type='input',  label=L.name,  default=L.newDoor, required=true, min=3, max=50 },
+            { type='number', label=L.price, default=0, min=0, max=999999 },
+        })
+        if input then
+            TriggerServerEvent('rde_doors:createDoor', {
+                name    = input[1],
+                model   = model,
+                coords  = { x = doorCoords.x, y = doorCoords.y, z = doorCoords.z },
+                heading = heading,
+                locked  = true,
+                price   = input[2],
+            })
+        end
+    end
+
+    isSelectingDoor = false
 end)
 
 -- ============================================
@@ -937,13 +988,11 @@ end)
 -- ============================================
 RegisterNetEvent('rde_doors:syncDoors', function(serverDoors, serverGroups)
     if not serverDoors then return end
-    for doorId in pairs(doorTargets) do
-        RemoveDoorTarget(doorId)
-    end
-    doorTargets = {}
-    loadedDoors = {}
+    for doorId in pairs(doorTargets) do RemoveDoorTarget(doorId) end
+    doorTargets  = {}
+    loadedDoors  = {}
     doorEntities = {}
-    doorGroups = serverGroups or {}
+    doorGroups   = serverGroups or {}
     activeTargets = 0
     for _, door in ipairs(serverDoors) do
         if door and door.id and door.coords then
@@ -963,44 +1012,45 @@ RegisterNetEvent('rde_doors:syncDoors', function(serverDoors, serverGroups)
 end)
 
 RegisterNetEvent('rde_doors:doorUpdate', function(doorId, door)
-    if not doorId or not door or not Config or not Config.UI then return end
+    if not doorId or not door then return end
     loadedDoors[doorId] = door
-    local playerCoords = GetEntityCoords(PlayerPedId())
-    local dist = #(playerCoords - vector3(door.coords.x, door.coords.y, door.coords.z))
-    if dist <= (Config.UI.proximityLoadDistance or 30.0) then
-        if doorTargets[doorId] then RemoveDoorTarget(doorId) end
-        CreateDoorTarget(doorId, door)
-    else
-        RemoveDoorTarget(doorId)
+    -- Update lock state in GTA door system without full re-registration
+    local ents = doorEntities[doorId]
+    if ents then
+        SetDoorLockState(door, door.locked)
+    end
+    -- Refresh target (re-registers + updated lock label)
+    if Config and Config.UI then
+        local playerCoords = GetEntityCoords(PlayerPedId())
+        local dist = #(playerCoords - vector3(door.coords.x, door.coords.y, door.coords.z))
+        if dist <= (Config.UI.proximityLoadDistance or 30.0) then
+            if doorTargets[doorId] then RemoveDoorTarget(doorId) end
+            CreateDoorTarget(doorId, door)
+        else
+            RemoveDoorTarget(doorId)
+        end
     end
 end)
 
 RegisterNetEvent('rde_doors:doorDeleted', function(doorId)
     RemoveDoorTarget(doorId)
-    loadedDoors[doorId] = nil
+    loadedDoors[doorId]  = nil
     doorEntities[doorId] = nil
 end)
 
 RegisterNetEvent('rde_doors:actionFeedback', function(success, message, doorId, action)
     if not L then return end
     if success then
-        if action == 'create' then
-            ShowNotification(L.success, L.doorCreated, 'success')
-        elseif action == 'update' then
-            ShowNotification(L.success, L.doorUpdated, 'success')
-        elseif action == 'delete' then
-            ShowNotification(L.success, L.doorDeleted, 'success')
-        elseif action == 'group_create' then
-            ShowNotification(L.success, L.doorGroupCreated, 'success')
-        elseif action == 'group_delete' then
-            ShowNotification(L.success, L.doorGroupDeleted, 'success')
-        elseif action == 'add_to_group' then
-            ShowNotification(L.success, L.doorAddedToGroup, 'success')
-        elseif action == 'remove_from_group' then
-            ShowNotification(L.success, L.doorRemovedFromGroup, 'success')
+        if action == 'create'             then ShowNotification(L.success, L.doorCreated, 'success')
+        elseif action == 'update'         then ShowNotification(L.success, L.doorUpdated, 'success')
+        elseif action == 'delete'         then ShowNotification(L.success, L.doorDeleted, 'success')
+        elseif action == 'group_create'   then ShowNotification(L.success, L.doorGroupCreated, 'success')
+        elseif action == 'group_delete'   then ShowNotification(L.success, L.doorGroupDeleted, 'success')
+        elseif action == 'add_to_group'   then ShowNotification(L.success, L.doorAddedToGroup, 'success')
+        elseif action == 'remove_from_group' then ShowNotification(L.success, L.doorRemovedFromGroup, 'success')
         end
     else
-        ShowNotification(L.error, message or (L.saveError or 'Save error'), 'error')
+        ShowNotification(L.error, message or 'Error', 'error')
     end
 end)
 
@@ -1012,9 +1062,9 @@ CreateThread(function()
         Wait(Config and Config.UI and Config.UI.proximityCheckInterval or 1000)
         if not playerLoaded or not Config or not Config.UI then goto continue end
         local playerCoords = GetEntityCoords(PlayerPedId())
-        local currentTime = GetGameTimer()
-        if currentTime - lastTargetUpdate < targetUpdateCooldown then goto continue end
-        lastTargetUpdate = currentTime
+        local t = GetGameTimer()
+        if t - lastTargetUpdate < targetUpdateCooldown then goto continue end
+        lastTargetUpdate = t
         for doorId, door in pairs(loadedDoors) do
             if door.coords then
                 local dist = #(playerCoords - vector3(door.coords.x, door.coords.y, door.coords.z))
@@ -1029,12 +1079,21 @@ CreateThread(function()
     end
 end)
 
+-- Entity existence check (reload if disappeared)
 CreateThread(function()
     while true do
         Wait(Config and Config.Performance and Config.Performance.entityCheckInterval or 5000)
         if not playerLoaded then goto continue end
-        for doorId, doorEntity in pairs(doorEntities) do
-            if not DoesEntityExist(doorEntity) then
+        for doorId, ents in pairs(doorEntities) do
+            local missing = false
+            if type(ents) == 'table' then
+                if (ents.a and not DoesEntityExist(ents.a)) or (ents.b and not DoesEntityExist(ents.b)) then
+                    missing = true
+                end
+            elseif not DoesEntityExist(ents) then
+                missing = true
+            end
+            if missing then
                 local door = loadedDoors[doorId]
                 if door then
                     RemoveDoorTarget(doorId)
@@ -1057,39 +1116,38 @@ CreateThread(function()
             goto continue
         end
         local playerCoords = GetEntityCoords(PlayerPedId())
-        local renderedAny = false
+        local rendered     = false
         for doorId, door in pairs(loadedDoors) do
             if door.coords then
                 local dist = #(playerCoords - vector3(door.coords.x, door.coords.y, door.coords.z))
                 if dist < (Config.UI.textDistance or 5.0) then
-                    local doorEntity = doorEntities[doorId]
-                    if doorEntity and DoesEntityExist(doorEntity) then
-                        local centerPoint = CalculateDoorCenter(doorEntity)
-                        if centerPoint then
-                            local text = string.format('%s\n%s\n%s',
-                                door.name or (L.door or 'Door'),
-                                door.locked and ('🔒 ' .. L.locked) or ('🔓 ' .. L.unlocked),
-                                door.owner_name or (L.noOwner or 'No Owner')
-                            )
-                            if door.price and door.price > 0 then
-                                text = text .. '\n' .. L.price .. tostring(door.price)
-                            end
-                            if door.group_id then
-                                text = text .. '\n📁 ' .. (doorGroups[door.group_id] and doorGroups[door.group_id].name or 'Unknown')
-                            end
-                            if door.items and #door.items > 0 then
-                                text = text .. '\n📦 ' .. table.concat(door.items, ', ')
-                            end
-                            Draw3DText(centerPoint, text)
-                            renderedAny = true
+                    -- Get text anchor (midpoint for double, geometry center for single)
+                    local anchor = GetTextAnchor(doorId, door)
+                    if anchor then
+                        local text = string.format('%s\n%s\n%s',
+                            door.name or (L.door or 'Door'),
+                            door.locked and ('🔒 ' .. (L.locked or 'Locked')) or ('🔓 ' .. (L.unlocked or 'Unlocked')),
+                            door.owner_name or (L.noOwner or 'No Owner')
+                        )
+                        if door.price and door.price > 0 then
+                            text = text .. '\n' .. (L.price or 'Price: $') .. tostring(door.price)
                         end
+                        if door.group_id then
+                            text = text .. '\n📁 ' .. (doorGroups[door.group_id] and doorGroups[door.group_id].name or 'Group')
+                        end
+                        if door.door_a then
+                            text = text .. '\n🚪🚪 Double Door'
+                        end
+                        if door.items and #door.items > 0 then
+                            text = text .. '\n📦 ' .. table.concat(door.items, ', ')
+                        end
+                        Draw3DText(anchor, text)
+                        rendered = true
                     end
                 end
             end
         end
-        if not renderedAny then
-            Wait(500)
-        end
+        if not rendered then Wait(500) end
         ::continue::
     end
 end)
@@ -1099,155 +1157,24 @@ end)
 -- ============================================
 CreateThread(function()
     json = json or require('json')
-    while GetResourceState('ox_core') ~= 'started' do
-        Wait(100)
-    end
-    local success, result = pcall(require, '@ox_core/lib/init')
-    if success and result then
+    while GetResourceState('ox_core') ~= 'started' do Wait(100) end
+    local ok, result = pcall(require, '@ox_core/lib/init')
+    if ok and result then
         Ox = result
         debugPrint('ox_core loaded successfully')
     else
         debugPrint('ox_core load failed, using fallback')
     end
-    success, result = pcall(require, 'shared.config')
-    if success and result then
+    ok, result = pcall(require, 'shared.config')
+    if ok and result then
         Config = result
         L = Config.Lang[Config.DefaultLanguage or 'en']
-        MAX_ACTIVE_TARGETS = Config.Performance and Config.Performance.maxActiveTargets or 20
-        targetUpdateCooldown = Config.UI and Config.UI.targetUpdateCooldown or 500
-        DEBUG_MODE = Config.Debug or true
+        MAX_ACTIVE_TARGETS    = Config.Performance and Config.Performance.maxActiveTargets or 20
+        targetUpdateCooldown  = Config.UI and Config.UI.targetUpdateCooldown or 500
+        DEBUG_MODE            = Config.Debug or true
         debugPrint('Config loaded')
     else
-        debugPrint('Config load failed, using fallback')
-        Config = {
-            UI = {
-                interactionDistance = 2.5,
-                proximityLoadDistance = 30.0,
-                proximityUnloadDistance = 35.0,
-                proximityCheckInterval = 1000,
-                use3DText = true,
-                textDistance = 5.0,
-                textScale = 0.35,
-                textFont = 4,
-                textOutline = true,
-                textShadow = true
-            },
-            Performance = {
-                entityCheckInterval = 5000,
-                maxActiveTargets = 20
-            },
-            DoorTypes = {
-                single = { name = 'Single Door' },
-                double = { name = 'Double Door' },
-                garage = { name = 'Garage Door' },
-                sliding = { name = 'Sliding Door' },
-                gate = { name = 'Gate' }
-            },
-            Lang = {
-                ['en'] = {
-                    success = 'Success',
-                    error = 'Error',
-                    warning = 'Warning',
-                    info = 'Information',
-                    press_to_interact = 'Press [E] to interact',
-                    processing = 'Processing...',
-                    cancelled = 'Cancelled',
-                    completed = 'Completed',
-                    noPermission = 'You do not have permission',
-                    admin_only = 'Admin privileges required',
-                    accessDenied = 'Access denied',
-                    not_enough_money = 'Insufficient funds',
-                    paid_amount = 'Paid: $%s',
-                    received_amount = 'Received: $%s',
-                    item_received = 'Received: %s x%s',
-                    item_removed = 'Removed: %s x%s',
-                    missing_items = 'Missing required items',
-                    locked = 'Locked',
-                    unlocked = 'Unlocked',
-                    doorName = 'Name: ',
-                    owner = 'Owner: ',
-                    price = 'Price: $',
-                    doorNotFound = 'Door not found',
-                    doorCreated = 'Door created successfully',
-                    doorUpdated = 'Door updated successfully',
-                    doorDeleted = 'Door deleted successfully',
-                    doorNotForSale = 'This door is not for sale',
-                    purchaseSuccess = 'Door purchased successfully',
-                    accessUpdated = 'Access list updated',
-                    priceUpdated = 'Price updated',
-                    doorRenamed = 'Door renamed',
-                    selectDoorType = 'Select Door Type',
-                    confirmSelection = 'Press [ATTACK/MOUSE1] to confirm selection',
-                    manage = 'Manage',
-                    setPrice = 'Set Price',
-                    manageAccess = 'Manage Access',
-                    addPlayer = 'Add Player',
-                    removePlayer = 'Remove Player',
-                    rename = 'Rename Door',
-                    editDoor = 'Edit Door',
-                    deleteDoor = 'Delete Door',
-                    lock = 'Lock',
-                    unlock = 'Unlock',
-                    ringBell = 'Ring Bell',
-                    knock = 'Knock',
-                    buy = 'Buy',
-                    teleport = 'Teleport',
-                    search = 'Search...',
-                    SomeoneRinging = 'Someone is ringing',
-                    SomeoneKnocking = 'Someone is knocking',
-                    selectingDoor = 'Left Click = Select | Right Click = Cancel',
-                    doorSelectionCancelled = 'Door selection cancelled',
-                    noDoorFound = 'No door entity found',
-                    manageAccessDesc = 'Add or remove players from the access list',
-                    teleportDesc = 'Teleport to the door location',
-                    notForSale = 'Not for sale',
-                    toggleLock = 'Toggle lock status',
-                    teleported = 'Teleported successfully',
-                    door = 'Door',
-                    noOwner = 'No Owner',
-                    playersWithAccess = 'players with access',
-                    addPlayerDesc = 'Grant access to a nearby player',
-                    removeAccess = 'Remove Access',
-                    revokeAccess = 'Click to revoke access',
-                    selectPlayer = 'Select Player',
-                    noPlayersNearby = 'No players nearby',
-                    accessManagement = 'Access Management',
-                    deleteConfirm = 'Are you sure?',
-                    deleteDoorDesc = 'Permanently delete this door',
-                    createDoor = 'Create Door',
-                    createDoorDesc = 'Select a door in the world',
-                    refreshDoors = 'Refresh Doors',
-                    refreshDoorsDesc = 'Reload all doors from the database',
-                    doorsRefreshed = 'Doors refreshed',
-                    name = 'Name',
-                    type = 'Type',
-                    editDoorDesc = 'Edit door properties',
-                    doorCreated = 'Door created',
-                    doorUpdated = 'Door updated',
-                    doorDeleted = 'Door deleted',
-                    newDoor = 'New Door',
-                    invalidDoor = 'Invalid door',
-                    doorGroupCreated = 'Door group created',
-                    doorGroupDeleted = 'Door group deleted',
-                    doorAddedToGroup = 'Door added to group',
-                    doorRemovedFromGroup = 'Door removed from group',
-                    itemRequired = 'Requires: %s',
-                    itemConsumed = 'Used: %s',
-                },
-                ['de'] = {
-                    -- Deutsche Übersetzungen (analog zu 'en')
-                }
-            },
-            Icons = {},
-            AdminSystem = {
-                acePermission = 'rde.doors.admin',
-                steamIds = {},
-                oxGroups = { ['admin'] = 0, ['superadmin'] = 0, ['management'] = 0 },
-                checkOrder = {'ace', 'oxcore', 'steam'}
-            },
-            Debug = true
-        }
-        L = Config.Lang[Config.DefaultLanguage or 'en']
+        debugPrint('Config load failed')
     end
 end)
 
@@ -1264,20 +1191,14 @@ end)
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     debugPrint('Cleaning up...')
-    for doorId in pairs(doorTargets) do
-        RemoveDoorTarget(doorId)
-    end
-    if selectionSphere and DoesEntityExist(selectionSphere) then
-        DeleteEntity(selectionSphere)
-    end
+    for doorId in pairs(doorTargets) do RemoveDoorTarget(doorId) end
+    if selectionSphere and DoesEntityExist(selectionSphere) then DeleteEntity(selectionSphere) end
     debugPrint('Cleanup complete')
 end)
 
 AddEventHandler('ox:playerLoaded', function()
     debugPrint('Player loaded event triggered')
-    if not playerLoaded then
-        WaitForPlayerLoad()
-    end
+    if not playerLoaded then WaitForPlayerLoad() end
     Wait(500)
     TriggerServerEvent('rde_doors:requestSync')
 end)
@@ -1285,61 +1206,50 @@ end)
 AddEventHandler('ox:playerLogout', function()
     debugPrint('Player logout event triggered')
     playerLoaded = false
-    for doorId in pairs(doorTargets) do
-        RemoveDoorTarget(doorId)
-    end
+    for doorId in pairs(doorTargets) do RemoveDoorTarget(doorId) end
 end)
 
 -- ============================================
 -- 💬 COMMANDS
 -- ============================================
 RegisterCommand('createdoor', function()
-    if not playerLoaded then
-        ShowNotification('Error', 'Please wait for game to fully load', 'error')
-        return
-    end
+    if not playerLoaded then ShowNotification('Error', 'Please wait for game to fully load', 'error'); return end
     lib.callback('rde_doors:checkAdmin', false, function(isAdmin)
         if isAdmin then
             TriggerEvent('rde_doors:startDoorSelection')
         else
-            ShowNotification(L.error, L.noPermission, 'error')
+            ShowNotification(L and L.error or 'Error', L and L.noPermission or 'No permission', 'error')
         end
     end)
 end, false)
 
 RegisterCommand('doormanager', function()
-    if not playerLoaded then
-        ShowNotification('Error', 'Please wait for game to fully load', 'error')
-        return
-    end
+    if not playerLoaded then ShowNotification('Error', 'Please wait for game to fully load', 'error'); return end
     lib.callback('rde_doors:checkAdmin', false, function(isAdmin)
         if isAdmin then
             OpenDoorManagerMenu()
         else
-            ShowNotification(L.error, L.noPermission, 'error')
+            ShowNotification(L and L.error or 'Error', L and L.noPermission or 'No permission', 'error')
         end
     end)
 end, false)
 
 if DEBUG_MODE then
     RegisterCommand('doordebug', function()
-        local charId = GetPlayerCharId()
-        local groups = LocalPlayer.state.groups
         debugPrint('=== DOOR DEBUG INFO ===')
         debugPrint('Player Loaded:', playerLoaded)
-        debugPrint('CharID:', charId)
-        debugPrint('Groups:', json and json.encode(groups or {}) or 'N/A')
+        debugPrint('CharID:', GetPlayerCharId())
         local doorCount = 0
-        for _ in pairs(loadedDoors) do doorCount = doorCount + 1 end
-        debugPrint('Loaded Doors:', doorCount)
+        local doubleCount = 0
+        for _, door in pairs(loadedDoors) do
+            doorCount = doorCount + 1
+            if door.door_a then doubleCount = doubleCount + 1 end
+        end
+        debugPrint('Loaded Doors:', doorCount, '| Double Doors:', doubleCount)
         debugPrint('Active Targets:', activeTargets)
-        local entityCount = 0
-        for _ in pairs(doorEntities) do entityCount = entityCount + 1 end
-        debugPrint('Door Entities:', entityCount)
         debugPrint('========================')
         ShowNotification('Debug', 'Check F8 console for details', 'info')
     end, false)
 end
 
-debugPrint('Client initialized successfully')
-
+debugPrint('Client v3.0.0 initialized successfully')
