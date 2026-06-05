@@ -1,23 +1,27 @@
 -- ============================================
 -- 🚪 RDE DOORS - CLIENT
 -- ============================================
--- Version: 3.0.0 (Double Door Support)
+-- Version: 4.0.0 (ox_doorlock Feature Parity + Backward Compat)
 -- Author: RDE | SerpentsByte
 -- ============================================
 
 local Ox, Config, L, json
-local loadedDoors     = {}
-local doorEntities    = {}  -- doorId → entity (single) or {a=entity, b=entity} (double)
-local doorTargets     = {}
-local doorGroups      = {}
-local isSelectingDoor = false
-local selectionSphere = nil
-local playerLoaded    = false
-local lastTargetUpdate    = 0
+local loadedDoors      = {}
+local doorEntities     = {}  -- doorId → entity (single) or {a=entity, b=entity} (double)
+local doorTargets      = {}
+local doorGroups       = {}
+local isSelectingDoor  = false
+local selectionSphere  = nil
+local playerLoaded     = false
+local lastTargetUpdate = 0
 local targetUpdateCooldown = 500
 local activeTargets    = 0
 local MAX_ACTIVE_TARGETS = 20
 local DEBUG_MODE = true
+
+-- v4: lockpick state tracking
+local PickingLock     = false
+local lastPickAttempt = 0
 
 -- ============================================
 -- 🎵 Sound Configuration
@@ -30,8 +34,24 @@ local doorSounds = {
 }
 
 -- ============================================
--- 📝 UTILITY FUNCTIONS
+-- 🚪 v4: DOOR RATE & DISTANCE HELPERS
 -- ============================================
+local function GetDoorInteractDistance(door)
+    if door and type(door.maxDistance) == 'number' and door.maxDistance > 0 then
+        return door.maxDistance
+    end
+    return (Config and Config.UI and Config.UI.interactionDistance) or 2.5
+end
+
+local function GetDoorRate(door)
+    if door.door_rate ~= nil and type(door.door_rate) == 'number' then
+        return door.door_rate
+    end
+    if door.auto then
+        return (Config and Config.Defaults and Config.Defaults.doorRateAuto) or 0.0
+    end
+    return (Config and Config.Defaults and Config.Defaults.doorRateSwing) or 10.0
+end
 local function debugPrint(...)
     if DEBUG_MODE then print('[RDE Doors | Client]', ...) end
 end
@@ -184,59 +204,114 @@ local function GetDoorEntity(coords, model)
 end
 
 -- Registers a door with GTA's door system (both single and double)
+-- v4: also sets AutomaticRate for sliding/garage/auto doors and hold_open
 local function RegisterDoorsWithSystem(doorId, door)
+    local rate = GetDoorRate(door)
+
+    -- Helper: resolve model hash for AddDoorToSystem.
+    -- Priority: model column (integer from GetEntityModel) > model string > model_hash fallback.
+    -- DB stores model = GetEntityModel() integer directly (correct for GTA door system).
+    -- model_hash was calculated differently and should NOT be used as primary source.
+    local function resolveModelHash(m, mhash)
+        -- model column: integer stored as number or numeric string (from GetEntityModel)
+        if type(m) == 'number' and m ~= 0 then return m end
+        if type(m) == 'string' and m ~= '' then
+            local asInt = tonumber(m)
+            if asInt and asInt ~= 0 then return asInt end
+            return GetHashKey(m)  -- actual model name string like "v_res_fa_door"
+        end
+        -- fallback: model_hash column (last resort, may be incorrect for old doors)
+        if type(mhash) == 'number' and mhash ~= 0 then return mhash end
+        if type(mhash) == 'string' and mhash ~= '' then
+            local asInt = tonumber(mhash)
+            if asInt and asInt ~= 0 then return asInt end
+        end
+        return 0
+    end
+
     if door.door_a and door.door_b then
         -- Double door: two entries, one hash each
         local hashA = joaat(('rde_door_%s_a'):format(doorId))
         local hashB = joaat(('rde_door_%s_b'):format(doorId))
         local ca = door.door_a.coords
         local cb = door.door_b.coords
-        local modelHashA = type(door.door_a.model) == 'string' and GetHashKey(door.door_a.model) or door.door_a.model
-        local modelHashB = type(door.door_b.model) == 'string' and GetHashKey(door.door_b.model) or door.door_b.model
+        local modelHashA = resolveModelHash(door.door_a.model, door.door_a.model_hash)
+        local modelHashB = resolveModelHash(door.door_b.model, door.door_b.model_hash)
 
         AddDoorToSystem(hashA, modelHashA, ca.x, ca.y, ca.z, false, false, false)
         DoorSystemSetDoorState(hashA, 4, false, false) -- reset
+        DoorSystemSetAutomaticRate(hashA, rate, false, false)
         DoorSystemSetDoorState(hashA, door.locked and 1 or 0, false, false)
+        if door.hold_open then DoorSystemSetHoldOpen(hashA, not door.locked) end
 
         AddDoorToSystem(hashB, modelHashB, cb.x, cb.y, cb.z, false, false, false)
         DoorSystemSetDoorState(hashB, 4, false, false)
+        DoorSystemSetAutomaticRate(hashB, rate, false, false)
         DoorSystemSetDoorState(hashB, door.locked and 1 or 0, false, false)
+        if door.hold_open then DoorSystemSetHoldOpen(hashB, not door.locked) end
 
         door.door_a._hash = hashA
         door.door_b._hash = hashB
     else
         -- Single door
         local hash      = joaat(('rde_door_%s'):format(doorId))
-        local modelHash = type(door.model) == 'string' and GetHashKey(door.model) or door.model
+        local modelHash = resolveModelHash(door.model, door.model_hash)
         local c         = door.coords
 
         AddDoorToSystem(hash, modelHash, c.x, c.y, c.z, false, false, false)
         DoorSystemSetDoorState(hash, 4, false, false)
+        DoorSystemSetAutomaticRate(hash, rate, false, false)
         DoorSystemSetDoorState(hash, door.locked and 1 or 0, false, false)
+        if door.hold_open then DoorSystemSetHoldOpen(hash, not door.locked) end
 
         door._hash = hash
     end
 end
 
 local function SetDoorLockState(door, locked)
+    local rate = GetDoorRate(door)
     if door.door_a and door.door_b then
-        if door.door_a._hash then DoorSystemSetDoorState(door.door_a._hash, locked and 1 or 0, false, false) end
-        if door.door_b._hash then DoorSystemSetDoorState(door.door_b._hash, locked and 1 or 0, false, false) end
+        if door.door_a._hash then
+            DoorSystemSetAutomaticRate(door.door_a._hash, rate, false, false)
+            DoorSystemSetDoorState(door.door_a._hash, locked and 1 or 0, false, false)
+            if door.hold_open then DoorSystemSetHoldOpen(door.door_a._hash, not locked) end
+        end
+        if door.door_b._hash then
+            DoorSystemSetAutomaticRate(door.door_b._hash, rate, false, false)
+            DoorSystemSetDoorState(door.door_b._hash, locked and 1 or 0, false, false)
+            if door.hold_open then DoorSystemSetHoldOpen(door.door_b._hash, not locked) end
+        end
     else
-        if door._hash then DoorSystemSetDoorState(door._hash, locked and 1 or 0, false, false) end
+        if door._hash then
+            DoorSystemSetAutomaticRate(door._hash, rate, false, false)
+            DoorSystemSetDoorState(door._hash, locked and 1 or 0, false, false)
+            if door.hold_open then DoorSystemSetHoldOpen(door._hash, not locked) end
+        end
     end
 end
 
 local function PlayDoorSound(doorId, door, locked)
     local coords = door.coords
     if not coords then return end
-    local soundName = locked and doorSounds.lock.name or doorSounds.unlock.name
-    local soundSet  = locked and doorSounds.lock.set  or doorSounds.unlock.set
+    local soundName, soundSet
+    if locked then
+        soundName = (door.lock_sound and door.lock_sound ~= '') and door.lock_sound
+                    or (Config and Config.Sounds and Config.Sounds.lockDefault and Config.Sounds.lockDefault.name)
+                    or doorSounds.lock.name
+        soundSet  = (Config and Config.Sounds and Config.Sounds.lockDefault and Config.Sounds.lockDefault.set)
+                    or doorSounds.lock.set
+    else
+        soundName = (door.unlock_sound and door.unlock_sound ~= '') and door.unlock_sound
+                    or (Config and Config.Sounds and Config.Sounds.unlockDefault and Config.Sounds.unlockDefault.name)
+                    or doorSounds.unlock.name
+        soundSet  = (Config and Config.Sounds and Config.Sounds.unlockDefault and Config.Sounds.unlockDefault.set)
+                    or doorSounds.unlock.set
+    end
     PlaySoundFromCoord(-1, soundName, coords.x, coords.y, coords.z, soundSet, false, 10.0, false)
 end
 
 -- ============================================
--- 🎯 TARGET SYSTEM
+-- 🛡️ ACCESS CHECK (client — informational, server is authoritative)
 -- ============================================
 local function IsPlayerAdmin()
     local groups = LocalPlayer.state.groups
@@ -263,9 +338,77 @@ local function HasAccess(door)
             if tostring(id) == charId then return true end
         end
     end
+    -- groups/items/passcode are server-validated
     return false
 end
 
+-- ============================================
+-- 🔧 LOCKPICK SYSTEM (v4)
+-- ============================================
+local function HasLockpickItem()
+    if not exports.ox_inventory then return false end
+    for _, itemName in ipairs(Config and Config.Lockpick and Config.Lockpick.items or {'lockpick'}) do
+        if exports.ox_inventory:GetItemCount(itemName) > 0 then
+            return true, itemName
+        end
+    end
+    return false
+end
+
+local function StartLockpick(doorId)
+    local door = loadedDoors[doorId]
+    if not door or not door.lockpick then return end
+    if PickingLock then return end
+    if not door.locked and not (Config and Config.Lockpick and Config.Lockpick.canPickUnlocked) then return end
+    if GetGameTimer() - lastPickAttempt < (Config and Config.Lockpick and Config.Lockpick.cooldownMs or 1500) then return end
+    if not HasLockpickItem() then return end
+
+    PickingLock = true
+    lastPickAttempt = GetGameTimer()
+
+    local anchorCoords = door.coords
+    TaskTurnPedToFaceCoord(cache.ped, anchorCoords.x, anchorCoords.y, anchorCoords.z, 4000)
+    Wait(400)
+
+    local animDict = (Config and Config.Lockpick and Config.Lockpick.animDict) or 'mp_common_heist'
+    local animName = (Config and Config.Lockpick and Config.Lockpick.animName) or 'pick_door'
+    lib.requestAnimDict(animDict, 5000)
+    TaskPlayAnim(cache.ped, animDict, animName, 3.0, 1.0, -1, 49, 0, true, true, true)
+    ShowNotification(L and L.info or 'ℹ️', L and L.lockpickStarted or 'Picking lock...', 'inform')
+
+    local difficulty = door.lockpick_difficulty
+    if not difficulty or (type(difficulty) == 'table' and #difficulty == 0) then
+        difficulty = (Config and Config.Lockpick and Config.Lockpick.defaultDifficulty) or { 'easy', 'easy', 'medium' }
+    end
+
+    local success = lib.skillCheck(difficulty, { 'w', 'a', 's', 'd' })
+    StopAnimTask(cache.ped, animDict, animName, 1.0)
+    RemoveAnimDict(animDict)
+    PickingLock = false
+
+    if success then
+        ShowNotification(L and L.success or '✅', L and L.lockpickSuccess or 'Lock picked!', 'success')
+        TriggerServerEvent('rde_doors:attemptLockpick', doorId)
+    else
+        ShowNotification(L and L.error or '❌', L and L.lockpickFailed or 'Lockpick failed', 'error')
+        TriggerServerEvent('rde_doors:lockpickFailed', doorId)
+    end
+end
+
+-- ============================================
+-- 🔐 PASSCODE PROMPT (v4)
+-- ============================================
+local function PromptPasscodeAndToggle(doorId)
+    local input = lib.inputDialog(L and L.passcodePrompt or 'Enter Passcode', {
+        { type='input', label=L and L.passcode or 'Passcode', password=true, required=true, min=1, max=100, icon='lock' },
+    })
+    if not input or not input[1] then return end
+    TriggerServerEvent('rde_doors:toggleLock', doorId, input[1])
+end
+
+-- ============================================
+-- 🎯 TARGET SYSTEM
+-- ============================================
 local function RemoveDoorTarget(doorId)
     if not doorTargets[doorId] then return end
     local ents = doorEntities[doorId]
@@ -283,21 +426,31 @@ end
 
 local function BuildTargetOptions(doorId, door)
     if not L then return {} end
+    local interactDist = GetDoorInteractDistance(door)
+
+    local function smartToggle()
+        if HasAccess(door) then
+            TriggerServerEvent('rde_doors:toggleLock', doorId)
+        elseif door.has_passcode then
+            PromptPasscodeAndToggle(doorId)
+        else
+            TriggerServerEvent('rde_doors:toggleLock', doorId)
+        end
+    end
+
     local options = {
         {
             name     = 'door_toggle_' .. doorId,
             label    = door.locked and L.unlock or L.lock,
             icon     = door.locked and (Config and Config.Icons and Config.Icons.unlock or '🔓') or (Config and Config.Icons and Config.Icons.lock or '🔒'),
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
-            onSelect = function()
-                TriggerServerEvent('rde_doors:toggleLock', doorId)
-            end,
+            distance = interactDist,
+            onSelect = smartToggle,
         },
         {
             name     = 'door_ring_' .. doorId,
             label    = L.ringBell,
             icon     = Config and Config.Icons and Config.Icons.bell or '🔔',
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            distance = interactDist,
             onSelect = function()
                 TriggerServerEvent('rde_doors:ringBell', doorId)
                 PlaySoundFromCoord(-1, doorSounds.bell.name, door.coords.x, door.coords.y, door.coords.z, doorSounds.bell.set, false, 10.0, false)
@@ -308,7 +461,7 @@ local function BuildTargetOptions(doorId, door)
             name     = 'door_knock_' .. doorId,
             label    = L.knock,
             icon     = Config and Config.Icons and Config.Icons.knock or '👊',
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            distance = interactDist,
             onSelect = function()
                 lib.requestAnimDict('timetable@jimmy@doorknock@', 5000)
                 TaskPlayAnim(cache.ped, 'timetable@jimmy@doorknock@', 'knockdoor_idle', 8.0, -8.0, 1500, 48, 0, false, false, false)
@@ -321,7 +474,7 @@ local function BuildTargetOptions(doorId, door)
             name     = 'door_buy_' .. doorId,
             label    = (L.buy or 'Buy') .. ' ($' .. (door.price or 0) .. ')',
             icon     = Config and Config.Icons and Config.Icons.buy or '💰',
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            distance = interactDist,
             onSelect = function()
                 lib.callback('rde_doors:buyDoor', false, function(success, message)
                     if not success then ShowNotification(L.error, message, 'error') end
@@ -331,12 +484,28 @@ local function BuildTargetOptions(doorId, door)
         },
     }
 
+    -- v4: Lockpick option
+    if door.lockpick then
+        table.insert(options, {
+            name     = 'door_lockpick_' .. doorId,
+            label    = L.pickLock or '🔧 Pick Lock',
+            icon     = Config and Config.Icons and Config.Icons.lockpick or '🔧',
+            distance = interactDist,
+            onSelect = function() StartLockpick(doorId) end,
+            canInteract = function()
+                if PickingLock then return false end
+                if not door.locked and not (Config and Config.Lockpick and Config.Lockpick.canPickUnlocked) then return false end
+                return HasLockpickItem()
+            end,
+        })
+    end
+
     if HasAccess(door) then
         table.insert(options, {
             name     = 'door_owner_' .. doorId,
             label    = L.manage,
             icon     = Config and Config.Icons and Config.Icons.manage or '🔧',
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            distance = interactDist,
             onSelect = function() OpenOwnerMenu(doorId) end,
         })
     end
@@ -346,14 +515,14 @@ local function BuildTargetOptions(doorId, door)
             name     = 'door_admin_' .. doorId,
             label    = 'Admin Menu',
             icon     = Config and Config.Icons and Config.Icons.admin or '👑',
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            distance = interactDist,
             onSelect = function() OpenAdminMenu(doorId) end,
         })
         table.insert(options, {
             name     = 'door_teleport_' .. doorId,
             label    = L.teleport,
             icon     = Config and Config.Icons and Config.Icons.map_pin or '📍',
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            distance = interactDist,
             onSelect = function()
                 DoScreenFadeOut(500); Wait(500)
                 SetEntityCoords(cache.ped, door.coords.x, door.coords.y, door.coords.z, false, false, false, false)
@@ -368,7 +537,7 @@ local function BuildTargetOptions(doorId, door)
             name     = 'door_group_' .. doorId,
             label    = '📁 ' .. (doorGroups[door.group_id] and doorGroups[door.group_id].name or 'Unknown'),
             icon     = Config and Config.Icons and Config.Icons.door_group or '📁',
-            distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+            distance = interactDist,
             onSelect = function() OpenDoorGroupMenu(door.group_id) end,
         })
     end
@@ -379,18 +548,15 @@ local function BuildTargetOptions(doorId, door)
                 name     = 'door_item_' .. doorId .. '_' .. item,
                 label    = string.format(L.itemRequired, item),
                 icon     = '📦',
-                distance = Config and Config.UI and Config.UI.interactionDistance or 2.5,
+                distance = interactDist,
                 onSelect = function()
                     lib.callback('rde_doors:useItem', false, function(success, message)
-                        if success then
-                            ShowNotification(L.success, string.format(L.itemConsumed, item), 'success')
-                        else
-                            ShowNotification(L.error, message, 'error')
-                        end
+                        if success then ShowNotification(L.success, string.format(L.itemConsumed, item), 'success')
+                        else ShowNotification(L.error, message, 'error') end
                     end, doorId, item)
                 end,
                 canInteract = function()
-                    return exports.ox_inventory and exports.ox_inventory:GetItemCount(cache.playerId, item) > 0
+                    return exports.ox_inventory and exports.ox_inventory:GetItemCount(item) > 0
                 end,
             })
         end
@@ -582,6 +748,123 @@ function OpenAdminMenu(doorId)
                     if input then
                         TriggerServerEvent('rde_doors:updateDoor', doorId, { name=input[1], price=input[2], type=input[3] })
                     end
+                end,
+            },
+            {
+                title = L.advancedSettings or '⚙️ Advanced Settings',
+                description = 'Lockpick, passcode, autolock, sounds, auto-rate, hide UI, hold open',
+                icon = '⚙️',
+                onSelect = function()
+                    lib.registerContext({
+                        id = 'door_advanced_menu_' .. doorId,
+                        title = '⚙️ Advanced – ' .. (door.name or 'Door'),
+                        options = {
+                            {
+                                title = (door.lockpick and '✅ ' or '❌ ') .. (L.lockpick or 'Lockpickable'),
+                                icon = '🔧',
+                                onSelect = function() TriggerServerEvent('rde_doors:updateDoor', doorId, { lockpick = not door.lockpick }) end,
+                            },
+                            {
+                                title = 'Set Lockpick Difficulty',
+                                description = door.lockpick_difficulty and table.concat(door.lockpick_difficulty, ',') or 'easy,easy,medium',
+                                icon = '🎯',
+                                onSelect = function()
+                                    local input = lib.inputDialog('Lockpick Difficulty', {
+                                        { type='input', label='Difficulty (e.g. easy,medium,hard)', default=door.lockpick_difficulty and table.concat(door.lockpick_difficulty,',') or 'easy,easy,medium' }
+                                    })
+                                    if input and input[1] then
+                                        local parts = {}
+                                        for p in input[1]:gmatch('[^,]+') do parts[#parts+1] = p:match('^%s*(.-)%s*$') end
+                                        TriggerServerEvent('rde_doors:updateDoor', doorId, { lockpick_difficulty = parts })
+                                    end
+                                end,
+                            },
+                            {
+                                title = door.has_passcode and '🔢 Change Passcode' or '🔢 Set Passcode',
+                                icon = '🔢',
+                                onSelect = function()
+                                    local input = lib.inputDialog('Passcode', {
+                                        { type='input', label='Passcode (empty to remove)', password=true }
+                                    })
+                                    if input then TriggerServerEvent('rde_doors:updateDoor', doorId, { passcode = input[1] or '' }) end
+                                end,
+                            },
+                            {
+                                title = 'Autolock Timer',
+                                description = door.autolock and door.autolock > 0 and (door.autolock .. 's') or 'Off',
+                                icon = '⏱️',
+                                onSelect = function()
+                                    local input = lib.inputDialog('Autolock', {
+                                        { type='number', label='Seconds (0 = off)', default=door.autolock or 0, min=0, max=3600 }
+                                    })
+                                    if input then TriggerServerEvent('rde_doors:updateDoor', doorId, { autolock = input[1] }) end
+                                end,
+                            },
+                            {
+                                title = (door.auto and '✅ ' or '❌ ') .. 'Automatic Door (Sliding/Garage)',
+                                icon = '🤖',
+                                onSelect = function() TriggerServerEvent('rde_doors:updateDoor', doorId, { auto = not door.auto }) end,
+                            },
+                            {
+                                title = 'Door Rate',
+                                description = door.door_rate and ('Rate: ' .. door.door_rate) or 'Auto (0.0 if automatic, else 10.0)',
+                                icon = '⚡',
+                                onSelect = function()
+                                    local input = lib.inputDialog('Door Rate', {
+                                        { type='input', label='Rate (empty = auto)', default=door.door_rate and tostring(door.door_rate) or '' }
+                                    })
+                                    if input then
+                                        local v = tonumber(input[1])
+                                        TriggerServerEvent('rde_doors:updateDoor', doorId, { door_rate = v })
+                                    end
+                                end,
+                            },
+                            {
+                                title = (door.hide_ui and '✅ ' or '❌ ') .. 'Hide UI',
+                                icon = '🙈',
+                                onSelect = function() TriggerServerEvent('rde_doors:updateDoor', doorId, { hide_ui = not door.hide_ui }) end,
+                            },
+                            {
+                                title = (door.hold_open and '✅ ' or '❌ ') .. 'Hold Open When Unlocked',
+                                icon = '🚪',
+                                onSelect = function() TriggerServerEvent('rde_doors:updateDoor', doorId, { hold_open = not door.hold_open }) end,
+                            },
+                            {
+                                title = 'Lock Sound',
+                                description = door.lock_sound or 'Default',
+                                icon = '🔊',
+                                onSelect = function()
+                                    local input = lib.inputDialog('Lock Sound', {
+                                        { type='input', label='Sound name (empty = default)', default=door.lock_sound or '' }
+                                    })
+                                    if input then TriggerServerEvent('rde_doors:updateDoor', doorId, { lock_sound = input[1] or '' }) end
+                                end,
+                            },
+                            {
+                                title = 'Unlock Sound',
+                                description = door.unlock_sound or 'Default',
+                                icon = '🔊',
+                                onSelect = function()
+                                    local input = lib.inputDialog('Unlock Sound', {
+                                        { type='input', label='Sound name (empty = default)', default=door.unlock_sound or '' }
+                                    })
+                                    if input then TriggerServerEvent('rde_doors:updateDoor', doorId, { unlock_sound = input[1] or '' }) end
+                                end,
+                            },
+                            {
+                                title = 'Interact Distance',
+                                description = 'Current: ' .. (door.maxDistance or 2.5),
+                                icon = '📏',
+                                onSelect = function()
+                                    local input = lib.inputDialog('Interact Distance', {
+                                        { type='number', label='Distance (meters)', default=door.maxDistance or 2.5, min=0.5, max=10.0 }
+                                    })
+                                    if input then TriggerServerEvent('rde_doors:updateDoor', doorId, { maxDistance = input[1] }) end
+                                end,
+                            },
+                        }
+                    })
+                    lib.showContext('door_advanced_menu_' .. doorId)
                 end,
             },
             {
@@ -970,12 +1253,13 @@ RegisterNetEvent('rde_doors:startDoorSelection', function()
         })
         if input then
             TriggerServerEvent('rde_doors:createDoor', {
-                name    = input[1],
-                model   = model,
-                coords  = { x = doorCoords.x, y = doorCoords.y, z = doorCoords.z },
-                heading = heading,
-                locked  = true,
-                price   = input[2],
+                name       = input[1],
+                model      = '',          -- integer hash goes in model_hash, not model string
+                model_hash = model,       -- GetEntityModel returns integer hash
+                coords     = { x = doorCoords.x, y = doorCoords.y, z = doorCoords.z },
+                heading    = heading,
+                locked     = true,
+                price      = input[2],
             })
         end
     end
@@ -1013,7 +1297,12 @@ end)
 
 RegisterNetEvent('rde_doors:doorUpdate', function(doorId, door)
     if not doorId or not door then return end
+    local prev = loadedDoors[doorId]
     loadedDoors[doorId] = door
+    -- v4: play sound if lock state changed
+    if prev and prev.locked ~= door.locked then
+        PlayDoorSound(doorId, door, door.locked)
+    end
     -- Update lock state in GTA door system without full re-registration
     local ents = doorEntities[doorId]
     if ents then
@@ -1252,4 +1541,67 @@ if DEBUG_MODE then
     end, false)
 end
 
-debugPrint('Client v3.0.0 initialized successfully')
+-- ============================================
+-- 🔧 v4: LOCKPICK RESULT EVENTS
+-- ============================================
+RegisterNetEvent('rde_doors:lockpickResult', function(success, doorId, broken)
+    if not L then return end
+    if success then
+        ShowNotification(L.success, L.lockpickSuccess or 'Lock picked!', 'success')
+    else
+        ShowNotification(L.error, L.lockpickFailed or 'Lockpick failed', 'error')
+    end
+    if broken then
+        ShowNotification(L.warning or '⚠️', L.lockpickBroken or 'Your lockpick broke!', 'warning')
+    end
+end)
+
+-- ============================================
+-- 🧩 v4: CLIENT EXPORTS (ox_doorlock-compatible)
+-- ============================================
+exports('getClosestDoor', function()
+    local playerCoords = GetEntityCoords(PlayerPedId())
+    local closest, closestDist = nil, 999999
+    for _, door in pairs(loadedDoors) do
+        if door.coords then
+            local dist = #(playerCoords - vector3(door.coords.x, door.coords.y, door.coords.z))
+            if dist < closestDist then
+                closestDist = dist
+                closest = door
+            end
+        end
+    end
+    return closest
+end)
+
+exports('useClosestDoor', function()
+    local playerCoords = GetEntityCoords(PlayerPedId())
+    local closestId, closestDist = nil, 999999
+    for doorId, door in pairs(loadedDoors) do
+        if door.coords then
+            local dist = #(playerCoords - vector3(door.coords.x, door.coords.y, door.coords.z))
+            if dist < closestDist then
+                closestDist = dist
+                closestId = doorId
+            end
+        end
+    end
+    if closestId then TriggerServerEvent('rde_doors:toggleLock', closestId) end
+end)
+
+exports('pickClosestDoor', function()
+    local playerCoords = GetEntityCoords(PlayerPedId())
+    local closestId, closestDist = nil, 999999
+    for doorId, door in pairs(loadedDoors) do
+        if door.coords and door.lockpick then
+            local dist = #(playerCoords - vector3(door.coords.x, door.coords.y, door.coords.z))
+            if dist < closestDist then
+                closestDist = dist
+                closestId = doorId
+            end
+        end
+    end
+    if closestId then StartLockpick(closestId) end
+end)
+
+

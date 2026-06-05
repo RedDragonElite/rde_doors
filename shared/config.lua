@@ -105,9 +105,65 @@ Config.Lang = {
         doorRemovedFromGroup = 'Door removed from group',
         itemRequired = 'Requires: %s',
         itemConsumed = 'Used: %s',
+        -- v4.0.0 ─────────────────────────────────
+        advancedSettings    = '⚙️ Advanced Settings',
+        advancedSettingsDesc= 'Lockpick, passcode, autolock, sounds, etc.',
+        passcode            = '🔢 Passcode',
+        passcodePrompt      = 'Enter Passcode',
+        passcodeIncorrect   = '🚫 Incorrect passcode',
+        passcodeSet         = '🔢 Passcode updated',
+        passcodeCleared     = '🔢 Passcode cleared',
+        autolock            = '⏱️ Autolock (seconds)',
+        autolockDesc        = '0 = disabled. Door re-locks after X seconds',
+        autolockSet         = '⏱️ Autolock interval updated',
+        interactDistance    = '📏 Interact Distance (meters)',
+        interactDistanceDesc= 'How close player must be to use the door',
+        doorRate            = '🌀 Door Rate (speed)',
+        doorRateDesc        = '0.0 = instant (sliding) | 10.0 = swing default',
+        autoFlag            = '🤖 Automatic Door',
+        autoFlagDesc        = 'Sliding/garage/automatic — uses door rate',
+        lockpickEnable      = '🔧 Lockpickable',
+        lockpickEnableDesc  = 'Can be opened with a lockpick item',
+        lockpickStarted     = '🔧 Picking lock...',
+        lockpickSuccess     = '🔓 Lock picked successfully',
+        lockpickFailed      = '🚫 Lockpick failed',
+        lockpickBroke       = '💥 Lockpick broke',
+        lockpickNoItem      = '🚫 You need a lockpick',
+        lockpickDifficulty  = '🎯 Lockpick Difficulty',
+        lockpickDifficultyDesc = 'easy / medium / hard or custom',
+        pickLock            = '🔧 Pick Lock',
+        hideUi              = '🙈 Hide UI',
+        hideUiDesc          = 'Hide 3D text & sprite indicators',
+        holdOpen            = '🚪 Hold Open',
+        holdOpenDesc        = 'Keep door physically open when unlocked',
+        lockSound           = '🔊 Lock Sound',
+        unlockSound         = '🔊 Unlock Sound',
+        soundReset          = '🔊 Sound reset to default',
+        manageGroups        = '🏢 Manage Groups (Grade-based)',
+        manageGroupsDesc    = 'Add groups with minimum grade requirement',
+        addGroup            = 'Add Group',
+        removeGroup         = 'Remove Group',
+        groupName           = 'Group Name (e.g. police, ambulance)',
+        groupGrade          = 'Minimum Grade (0 = all)',
+        groupAdded          = '🏢 Group added',
+        groupRemoved        = '🏢 Group removed',
+        manageItems         = '📦 Manage Items (with Metadata)',
+        manageItemsDesc     = 'Add items with optional metadata requirement',
+        addItem             = 'Add Item',
+        removeItem          = 'Remove Item',
+        itemName            = 'Item Name',
+        itemMetadata        = 'Metadata Type (optional)',
+        itemRemoveOnUse     = 'Consume on use?',
+        itemAdded           = '📦 Item requirement added',
+        itemRemoved         = '📦 Item requirement removed',
+        autoLockedTimer     = '⏱️ Door auto-locked',
+        lockpickActive      = '🔧 Lockpicking — focus on the bar',
+        clear               = 'Clear',
+        toggle              = 'Toggle',
+        on                  = 'On',
+        off                 = 'Off',
     },
     ['de'] = {
-        -- Deutsche Übersetzungen (analog zu 'en', mit Unicode-Icons)
         success = '✅ Erfolg',
         error = '❌ Fehler',
         warning = '⚠️ Warnung',
@@ -161,7 +217,6 @@ Config.Lang = {
         selectingDoor = '🎯 Linksklick = Auswählen | Rechtsklick = Abbrechen',
         doorSelectionCancelled = 'Auswahl abgebrochen',
         noDoorFound = 'Keine Tür gefunden',
-        -- Descriptions (analog zu 'en')
         manageAccessDesc = 'Spieler zur Zugriffsliste hinzufügen oder entfernen',
         teleportDesc = 'Zur Tür teleportieren',
         notForSale = 'Nicht zum Verkauf',
@@ -197,6 +252,63 @@ Config.Lang = {
         doorRemovedFromGroup = 'Tür aus Gruppe entfernt',
         itemRequired = 'Benötigt: %s',
         itemConsumed = 'Verwendet: %s',
+        -- v4.0.0
+        advancedSettings    = '⚙️ Erweiterte Einstellungen',
+        advancedSettingsDesc= 'Lockpick, Passcode, Autolock, Sounds, etc.',
+        passcode            = '🔢 Passcode',
+        passcodePrompt      = 'Passcode eingeben',
+        passcodeIncorrect   = '🚫 Falscher Passcode',
+        passcodeSet         = '🔢 Passcode aktualisiert',
+        passcodeCleared     = '🔢 Passcode entfernt',
+        autolock            = '⏱️ Autolock (Sekunden)',
+        autolockDesc        = '0 = deaktiviert. Tür sperrt sich nach X Sekunden',
+        autolockSet         = '⏱️ Autolock-Intervall aktualisiert',
+        interactDistance    = '📏 Interaktionsdistanz (Meter)',
+        interactDistanceDesc= 'Wie nah der Spieler an der Tür sein muss',
+        doorRate            = '🌀 Türgeschwindigkeit',
+        doorRateDesc        = '0.0 = sofort (Sliding) | 10.0 = Schwingtür Standard',
+        autoFlag            = '🤖 Automatische Tür',
+        autoFlagDesc        = 'Sliding/Garage/Automatik — nutzt Türgeschwindigkeit',
+        lockpickEnable      = '🔧 Lockpickbar',
+        lockpickEnableDesc  = 'Kann mit Lockpick-Item geöffnet werden',
+        lockpickStarted     = '🔧 Schloss wird geknackt...',
+        lockpickSuccess     = '🔓 Schloss erfolgreich geknackt',
+        lockpickFailed      = '🚫 Lockpick fehlgeschlagen',
+        lockpickBroke       = '💥 Lockpick zerbrochen',
+        lockpickNoItem      = '🚫 Du brauchst einen Lockpick',
+        lockpickDifficulty  = '🎯 Lockpick-Schwierigkeit',
+        lockpickDifficultyDesc = 'easy / medium / hard oder custom',
+        pickLock            = '🔧 Schloss knacken',
+        hideUi              = '🙈 UI ausblenden',
+        hideUiDesc          = '3D-Text & Indikatoren verstecken',
+        holdOpen            = '🚪 Offen halten',
+        holdOpenDesc        = 'Tür bleibt physisch offen wenn entsperrt',
+        lockSound           = '🔊 Sperr-Sound',
+        unlockSound         = '🔊 Entsperr-Sound',
+        soundReset          = '🔊 Sound zurückgesetzt',
+        manageGroups        = '🏢 Gruppen verwalten (Grade-basiert)',
+        manageGroupsDesc    = 'Gruppen mit minimalem Grade hinzufügen',
+        addGroup            = 'Gruppe hinzufügen',
+        removeGroup         = 'Gruppe entfernen',
+        groupName           = 'Gruppenname (z.B. police, ambulance)',
+        groupGrade          = 'Min. Grade (0 = alle)',
+        groupAdded          = '🏢 Gruppe hinzugefügt',
+        groupRemoved        = '🏢 Gruppe entfernt',
+        manageItems         = '📦 Items verwalten (mit Metadata)',
+        manageItemsDesc     = 'Items mit optionalem Metadata-Filter',
+        addItem             = 'Item hinzufügen',
+        removeItem          = 'Item entfernen',
+        itemName            = 'Item-Name',
+        itemMetadata        = 'Metadata-Typ (optional)',
+        itemRemoveOnUse     = 'Bei Nutzung verbrauchen?',
+        itemAdded           = '📦 Item-Anforderung hinzugefügt',
+        itemRemoved         = '📦 Item-Anforderung entfernt',
+        autoLockedTimer     = '⏱️ Tür automatisch gesperrt',
+        lockpickActive      = '🔧 Schloss knacken — fokussiere auf die Leiste',
+        clear               = 'Löschen',
+        toggle              = 'Wechseln',
+        on                  = 'An',
+        off                 = 'Aus',
     }
 }
 
@@ -233,6 +345,19 @@ Config.Icons = {
     warning = '⚠️',
     error = '❌',
     door_group = '📁',
+    -- v4.0.0
+    advanced = '⚙️',
+    passcode = '🔢',
+    autolock = '⏱️',
+    distance = '📏',
+    rate = '🌀',
+    auto = '🤖',
+    lockpick = '🔧',
+    hide_ui = '🙈',
+    hold_open = '🚪',
+    sound = '🔊',
+    item = '📦',
+    group = '🏢',
 }
 
 -- ============================================
@@ -243,31 +368,36 @@ Config.DoorTypes = {
         name = 'Single Door',
         description = 'Standard single door',
         icon = '🚪',
-        color = '#3b82f6'
+        color = '#3b82f6',
+        autoDefault = false,
     },
     ['double'] = {
         name = 'Double Door',
         description = 'Double doors opening together',
         icon = '🚪🚪',
-        color = '#10b981'
+        color = '#10b981',
+        autoDefault = false,
     },
     ['garage'] = {
         name = 'Garage Door',
-        description = 'Large garage door',
+        description = 'Large garage door (automatic)',
         icon = '🏭',
-        color = '#f59e0b'
+        color = '#f59e0b',
+        autoDefault = true,  -- v4: garage doors are automatic by default
     },
     ['sliding'] = {
         name = 'Sliding Door',
         description = 'Automatic sliding door',
         icon = '↔️',
-        color = '#ef4444'
+        color = '#ef4444',
+        autoDefault = true,  -- v4: sliding doors are automatic by default
     },
     ['gate'] = {
         name = 'Gate',
-        description = 'Large entrance gate',
+        description = 'Large entrance gate (automatic)',
         icon = '🏗️',
-        color = '#8b5cf6'
+        color = '#8b5cf6',
+        autoDefault = true,  -- v4: gates are automatic by default
     }
 }
 
@@ -313,6 +443,9 @@ Config.Defaults = {
     heading = 0,
     price = 0,
     type = 'single',
+    -- v4.0.0
+    doorRateSwing = 10.0,   -- Standard swing door rate (slow opening)
+    doorRateAuto  = 0.0,    -- Standard automatic door rate (instant slide)
 }
 
 -- ============================================
@@ -342,6 +475,54 @@ Config.AdminSystem = {
         ['management'] = 0,
     },
     checkOrder = {'ace', 'oxcore', 'steam'}
+}
+
+-- ============================================
+-- 🔧 v4.0.0 — Lockpick System
+-- ============================================
+Config.Lockpick = {
+    -- Items, die als Lockpick fungieren (ox_inventory)
+    items = { 'lockpick', 'advancedlockpick' },
+    -- Default difficulty wenn die Tür keine custom hat
+    defaultDifficulty = { 'easy', 'easy', 'medium' },
+    -- Chance dass Lockpick bei Fehlversuch zerbricht (1 = 100%, 0.05 = 5%)
+    breakChanceOnFail = 0.20,
+    -- Chance dass Lockpick bei Erfolg zerbricht (1 = 100%, 0.01 = 1%)
+    breakChanceOnSuccess = 0.05,
+    -- Animation während des Pickens
+    animDict = 'mp_common_heist',
+    animName = 'pick_door',
+    animDuration = -1,
+    -- Kann unlocked doors gelockpicked werden? (für "lock-mode" lockpicks)
+    canPickUnlocked = false,
+    -- Cooldown zwischen Pick-Versuchen (ms)
+    cooldownMs = 1500,
+}
+
+-- ============================================
+-- 🔊 v4.0.0 — Sound Configuration
+-- ============================================
+Config.Sounds = {
+    -- Standard-Sounds wenn die Tür keine custom hat
+    lockDefault = {
+        name = 'door_lock',
+        set  = 'dlc_vinewood_casino_door_sounds',
+    },
+    unlockDefault = {
+        name = 'door_unlock',
+        set  = 'dlc_vinewood_casino_door_sounds',
+    },
+    -- Alternative Sound-Sets (für Custom Sound dropdown im Edit Menu)
+    alternatives = {
+        ['heavy_metal'] = {
+            lock   = { name = 'shutter_door_close',  set = 'dlc_xm_facility_finale_sounds' },
+            unlock = { name = 'shutter_door_open',   set = 'dlc_xm_facility_finale_sounds' },
+        },
+        ['vault']       = {
+            lock   = { name = 'vault_door_close',    set = 'mp_heist_pacific_standard_sounds' },
+            unlock = { name = 'vault_door_open',     set = 'mp_heist_pacific_standard_sounds' },
+        },
+    },
 }
 
 -- ============================================

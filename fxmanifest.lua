@@ -3,9 +3,9 @@ game 'gta5'
 lua54 'yes'
 
 name 'rde_doors'
-author 'RDE Development'
-version '3.0.0'
-description 'Advanced Door Management System with Double Door Support, State Bags and Proximity Loading for ox_core v3'
+author 'RDE Development | SerpentsByte'
+version '4.0.0'
+description 'Advanced Door Management System — Double Doors, Sliding/Automatic Doors, Lockpick, Passcode, Autolock, Group+Grade Auth, Item Metadata, Custom Sounds, Hold Open, Hide UI, StateBags & Proximity Loading (ox_core v3)'
 
 shared_scripts {
     '@ox_lib/init.lua',
@@ -30,5 +30,8 @@ dependencies {
     'oxmysql'
 }
 
--- State Bags werden automatisch synchronisiert
--- Keine zusätzliche Konfiguration nötig
+-- Auto-Migration:
+-- v3.0.0 → v4.0.0 wird automatisch beim Serverstart durchgeführt.
+-- Alle neuen Spalten werden via ALTER TABLE hinzugefügt (Defaults).
+-- Bestehende Türen funktionieren ohne Änderung weiter.
+-- Downgrade v4.0.0 → v3.0.0 ist möglich: neue Spalten werden von v3 ignoriert.
